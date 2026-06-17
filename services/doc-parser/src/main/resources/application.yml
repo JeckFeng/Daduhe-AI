@@ -1,0 +1,28 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: doc-parser
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:daduhe}
+    username: ${DB_USER:daduhe}
+    password: ${DB_PASSWORD:daduhe_dev}
+
+minio:
+  endpoint: http://${MINIO_ENDPOINT:localhost}:${MINIO_PORT:9000}
+  access-key: ${MINIO_ACCESS_KEY:minioadmin}
+  secret-key: ${MINIO_SECRET_KEY:minioadmin}
+
+milvus:
+  host: ${MILVUS_HOST:localhost}
+  port: ${MILVUS_PORT:19530}
+
+ollama:
+  host: ${OLLAMA_HOST:localhost}
+  port: ${OLLAMA_PORT:11434}
+
+webhook:
+  rule-extractor: ${RULE_EXTRACTOR_WEBHOOK_URL:http://localhost:3000/api/v1/rules/extract}
+  graph-engine: ${GRAPH_ENGINE_WEBHOOK_URL:http://localhost:8001/api/v1/graph/extract}
+  search-engine: ${SEARCH_ENGINE_WEBHOOK_URL:http://localhost:8002/api/v1/search/index}

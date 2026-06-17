@@ -1,0 +1,271 @@
+version: "3.8"
+
+services:
+  # ============================================================
+  # 基础设施
+  # ============================================================
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: postgres
+    environment:
+      POSTGRES_USER: daduhe
+      POSTGRES_PASSWORD: daduhe_dev
+      POSTGRES_DB: daduhe
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U daduhe"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  neo4j:
+    image: neo4j:5-community
+    container_name: neo4j
+    environment:
+      NEO4J_AUTH: neo4j/daduhe123
+      NEO4J_PLUGINS: '["apoc"]'
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    healthcheck:
+      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "daduhe123", "RETURN 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  milvus:
+    image: milvusdb/milvus:v2.4.0
+    container_name: milvus-standalone
+    command: ["milvus", "run", "standalone"]
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    volumes:
+      - milvus_data:/var/lib/milvus
+    depends_on:
+      - etcd
+      - minio
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    container_name: etcd
+    environment:
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: "1000"
+      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
+      ETCD_SNAPSHOT_COUNT: "50000"
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    ports:
+      - "2379:2379"
+    volumes:
+      - etcd_data:/etcd
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # ============================================================
+  # 业务服务
+  # ============================================================
+
+  doc-parser:
+    build: ./services/doc-parser
+    container_name: doc-parser
+    ports:
+      - "8080:8080"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: daduhe
+      DB_PASSWORD: daduhe_dev
+      DB_NAME: daduhe
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MILVUS_HOST: milvus-standalone
+      MILVUS_PORT: "19530"
+      OLLAMA_HOST: ollama
+      OLLAMA_PORT: "11434"
+      RULE_EXTRACTOR_WEBHOOK_URL: http://rule-extractor:3000/api/v1/rules/extract
+      GRAPH_ENGINE_WEBHOOK_URL: http://graph-engine:8001/api/v1/graph/extract
+      SEARCH_ENGINE_WEBHOOK_URL: http://search-engine:8002/api/v1/search/index
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      milvus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  rule-extractor:
+    build: ./services/rule-extractor
+    container_name: rule-extractor
+    ports:
+      - "3000:3000"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: daduhe
+      DB_PASSWORD: daduhe_dev
+      DB_NAME: daduhe
+      DOC_PARSER_URL: http://doc-parser:8080
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: https://api.deepseek.com/v1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      doc-parser:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  graph-engine:
+    build:
+      context: ./services
+      dockerfile: graph-engine/Dockerfile
+    container_name: graph-engine
+    ports:
+      - "8001:8001"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: daduhe
+      DB_PASSWORD: daduhe_dev
+      DB_NAME: daduhe
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: daduhe123
+      DOC_PARSER_URL: http://doc-parser:8080
+      AGENT_REASONING_URL: http://agent-reasoning:8003
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: https://api.deepseek.com/v1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  search-engine:
+    build:
+      context: ./services
+      dockerfile: search-engine/Dockerfile
+    container_name: search-engine
+    ports:
+      - "8002:8002"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: daduhe
+      DB_PASSWORD: daduhe_dev
+      DB_NAME: daduhe
+      MILVUS_HOST: milvus-standalone
+      MILVUS_PORT: "19530"
+      DOC_PARSER_URL: http://doc-parser:8080
+      RULE_EXTRACTOR_URL: http://rule-extractor:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      milvus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  agent-reasoning:
+    build:
+      context: ./services
+      dockerfile: agent-reasoning/Dockerfile
+    container_name: agent-reasoning
+    ports:
+      - "8003:8003"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: daduhe
+      DB_PASSWORD: daduhe_dev
+      DB_NAME: daduhe
+      SEARCH_ENGINE_URL: http://search-engine:8002
+      GRAPH_ENGINE_URL: http://graph-engine:8001
+      DOC_PARSER_URL: http://doc-parser:8080
+      RULE_EXTRACTOR_URL: http://rule-extractor:3000
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: https://api.deepseek.com/v1
+      VLLM_BASE_URL: ${VLLM_BASE_URL:-http://vllm:8000/v1}
+    depends_on:
+      search-engine:
+        condition: service_started
+      graph-engine:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  pgdata:
+  minio_data:
+  neo4j_data:
+  neo4j_logs:
+  milvus_data:
+  etcd_data:
+  ollama_data:
