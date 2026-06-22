@@ -173,7 +173,7 @@ services:
 
   graph-engine:
     build:
-      context: ./services
+      context: ./services/intelligence
       dockerfile: graph-engine/Dockerfile
     container_name: graph-engine
     ports:
@@ -204,7 +204,7 @@ services:
 
   search-engine:
     build:
-      context: ./services
+      context: ./services/intelligence
       dockerfile: search-engine/Dockerfile
     container_name: search-engine
     ports:
@@ -232,7 +232,7 @@ services:
 
   agent-reasoning:
     build:
-      context: ./services
+      context: ./services/intelligence
       dockerfile: agent-reasoning/Dockerfile
     container_name: agent-reasoning
     ports:
