@@ -1,30 +1,25 @@
 import express, { Request, Response } from "express";
 import { v4 as uuidv4 } from "uuid";
 
+import { tracingMiddleware } from "./common/tracing";
+import { log } from "./common/logging";
+import healthRouter from "./common/health";
+import { ErrorCode, errorResponse } from "./common/error-codes";
+
 const app = express();
 app.use(express.json());
 
 // ============================================================
-// 中间件: Trace-Id 注入与透传
+// 中间件: X-Trace-Id 注入与透传
 // ============================================================
 
-app.use((req: Request, _res: Response, next) => {
-  const traceId = (req.headers["x-trace-id"] as string) || `rule-extractor-${uuidv4()}`;
-  req.headers["x-trace-id"] = traceId;
-  next();
-});
+app.use(tracingMiddleware);
 
 // ============================================================
 // 健康检查
 // ============================================================
 
-app.get("/health", (_req: Request, res: Response) => {
-  res.json({ status: "ok" });
-});
-
-app.get("/ready", (_req: Request, res: Response) => {
-  res.json({ status: "ready", checks: { db: "ok" } });
-});
+app.use(healthRouter);
 
 // ============================================================
 // API: 触发规则抽取 (接收HT异步通知)
@@ -32,18 +27,9 @@ app.get("/ready", (_req: Request, res: Response) => {
 
 app.post("/api/v1/rules/extract", (req: Request, res: Response) => {
   const { doc_id } = req.body;
-  const traceId = req.headers["x-trace-id"];
+  const traceId = (req.headers["x-trace-id"] as string) || "";
 
-  console.log(
-    JSON.stringify({
-      timestamp: new Date().toISOString(),
-      level: "INFO",
-      service: "rule-extractor",
-      trace_id: traceId,
-      message: "rule extraction triggered",
-      detail: { doc_id },
-    })
-  );
+  log.info(traceId, "rule extraction triggered", { doc_id });
 
   res.status(202).json({
     code: 0,
@@ -89,13 +75,5 @@ app.get("/metrics", (_req: Request, res: Response) => {
 
 const PORT = parseInt(process.env.PORT || "3000");
 app.listen(PORT, () => {
-  console.log(
-    JSON.stringify({
-      timestamp: new Date().toISOString(),
-      level: "INFO",
-      service: "rule-extractor",
-      trace_id: `rule-extractor-${uuidv4()}`,
-      message: `rule-extractor listening on port ${PORT}`,
-    })
-  );
+  log.info(`rule-extractor-${uuidv4()}`, `rule-extractor listening on port ${PORT}`);
 });
