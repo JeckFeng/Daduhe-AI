@@ -39,15 +39,23 @@
 
 ### 服务器配置
 IP:10.222.124.211 
+
 用户名：gyyknowledge
+
 密码：gis31415
+
+
 
 ---
 
 ### PostgreSQL数据库配置
 数据库用户名：daduhe;
+
 数据库：mydatabase；
+
 密码：gis31415;
+
+
 
 ### 建立postgre数据库SSH隧道
 ```bash 
@@ -58,7 +66,9 @@ ssh -L 5434:localhost:5432 gyyknowledge@10.222.124.211
 
 ### ollama 配置
 embedding模型：bge-m3:latest
+
 bge-m3:latest模型已经在服务器上通过ollama部署；
+
 通过`ollama serve`命令启动ollama 服务
 
 ---
@@ -70,10 +80,15 @@ bge-m3:latest模型已经在服务器上通过ollama部署；
 
 ### Milvus部署
 通过服务器podman部署
+
 IP: 10.222.124.211 
+
 端口:19530
+
 账号：daduhe
+
 密码：gis31415
+
 数据库名称：daduhe_milvus_database
 
 ---
