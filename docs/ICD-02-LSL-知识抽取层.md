@@ -327,3 +327,180 @@ X-Trace-Id: {service_short}-{uuid_v4}
 ### 8.4 本服务发出的通知
 
 > 验证阶段LSL暂不主动通知下游（规则库由search-engine通过查询接口主动拉取）。
+
+
+**整体流程**
+
+1. HT 层上传并解析文档  
+   用户上传 PDF/Word/Markdown 等文档后，`doc-parser` 负责解析、转 Markdown、切 chunk、生成向量，并把 chunk 元数据写入 PostgreSQL。
+
+2. HT 通知 LSL 开始抽取  
+   HT 处理完成后，调用：
+
+```http
+POST http://rule-extractor:3000/api/v1/rules/extract
+```
+
+请求体大概是：
+
+```json
+{
+  "event_id": "evt-xxx",
+  "trace_id": "ht-xxx",
+  "doc_id": "doc-xxx",
+  "status": "completed"
+}
+```
+
+3. LSL 接收通知并创建抽取任务  
+   `rule-extractor` 收到 `doc_id` 后，不应该同步慢慢抽取，而是立即返回：
+
+```json
+{
+  "code": 0,
+  "message": "accepted",
+  "data": {
+    "task_id": "r-task-xxxx",
+    "status": "processing"
+  }
+}
+```
+
+然后在后台异步执行抽取。
+
+4. LSL 调用 HT 拉取 chunk  
+   根据 `doc_id` 分页调用：
+
+```http
+GET http://doc-parser:8080/api/v1/chunks?doc_id={doc_id}&page=1&page_size=50
+```
+
+拿到每个 chunk 的：
+
+```json
+{
+  "chunk_id": "...",
+  "chunk_text": "...",
+  "doc_id": "...",
+  "doc_title": "...",
+  "section_number": "...",
+  "section_title": "...",
+  "page_number": 23
+}
+```
+
+5. 对每个 chunk 做规则识别  
+   重点从 `chunk_text` 中识别这些内容：
+
+- 规范性语句：`应`、`必须`、`不得`、`不应`、`宜`
+- 条件语句：`当...时`、`若...则`
+- 阈值参数：`大于0.3mm`、`小于5%`、`不少于30天`
+- 处理措施：`应采取灌浆`、`应进行表面封闭`
+- 适用对象：`混凝土坝/裂缝/渗漏/变形`
+
+6. 生成结构化规则  
+   把原文句子变成统一格式：
+
+```json
+{
+  "title": "裂缝宽度安全阈值",
+  "content": "当裂缝宽度大于0.3mm时，应采取灌浆或表面封闭处理措施",
+  "category": "混凝土坝/裂缝",
+  "norm_ref": "DL/T 2628-2023",
+  "parameters": {
+    "name": "max_width_mm",
+    "operator": ">",
+    "value": 0.3,
+    "unit": "mm"
+  },
+  "source": {
+    "doc_id": "...",
+    "chunk_ids": ["..."],
+    "doc_title": "...",
+    "section_number": "5.2.3",
+    "page_number": 23
+  },
+  "confidence": 0.85
+}
+```
+
+7. 存入规则库  
+   存 PostgreSQL，建议单独 schema/table：
+
+```text
+rules.extracted_rules
+```
+
+需要支持幂等：同一个 `doc_id + chunk_id + content` 重复抽取时不能重复插入。
+
+8. 对外提供规则查询  
+   下游检索层、Agent 层调用：
+
+```http
+GET /api/v1/rules/search?keyword=裂缝&category=混凝土坝/裂缝&page=1&page_size=20
+```
+
+LSL 返回结构化规则列表。
+
+**一版 MVP 可以这样做**
+
+第一阶段不用急着接 DeepSeek，先跑通闭环：
+
+```text
+HT 通知 LSL
+  ↓
+LSL 拉取 chunks
+  ↓
+正则/关键词识别规则句子
+  ↓
+抽取简单参数
+  ↓
+写入 PostgreSQL
+  ↓
+/rules/search 能查出来
+```
+
+第二阶段再升级：
+
+```text
+chunk_text
+  ↓
+LLM 结构化抽取
+  ↓
+JSON Schema 校验
+  ↓
+规则去重/合并
+  ↓
+规则入库
+```
+
+**你这个服务最核心的判断**
+
+不是所有 chunk 都会变成规则。LSL 要判断：
+
+```text
+这段文字里有没有可执行、可判断、可检索的治理规则？
+```
+
+比如：
+
+```text
+大渡河流域地处四川省西部。
+```
+
+这不是规则。
+
+```text
+当裂缝宽度大于0.3mm时，应采取灌浆或表面封闭处理措施。
+```
+
+这是规则，因为它有：
+
+```text
+条件：裂缝宽度大于0.3mm
+动作：采取灌浆或表面封闭处理
+对象：裂缝
+参数：0.3mm
+```
+
+所以 LSL 最终产物不是“摘要”，而是“可结构化查询、可溯源、可供 Agent 推理使用的规则库”。
