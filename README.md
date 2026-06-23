@@ -97,6 +97,19 @@ IP: 10.222.124.211
 
 ---
 
+## 种子数据约定
+
+开发/测试阶段使用的 mock 数据，所有主键统一使用 `seed` 前缀，以便与正式数据区分：
+
+| 资源 | 种子数据格式 | 正式数据格式 |
+|------|------------|------------|
+| `doc_id` | `seed-doc-{uuid}` | 由 doc-parser 生成 |
+| `chunk_id` | `seed-chunk-{uuid}` | 由 doc-parser 生成 |
+| `md_doc_id` | `seed-md-{uuid}` | 由 doc-parser 生成 |
+| `embedding_id` | `seed-emb-{uuid}` | 由 doc-parser 生成 |
+
+种子脚本和测试代码中所有自产主键均遵循此约定。检索时可通过 `doc_id` 前缀过滤排除种子数据。
+
 ## 快速启动
 
 ```bash
