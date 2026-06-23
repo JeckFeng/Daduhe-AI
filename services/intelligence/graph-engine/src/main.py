@@ -1,20 +1,21 @@
 """graph-engine: 知识图谱实体关系抽取与推理"""
-import os
-import sys
-
-sys.path.insert(0, "/app")
-
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from common.logging import info, error as log_error
-from common.tracing import get_or_generate_trace_id
-from common.health import create_health_router
-from common.error_codes import ErrorCode, error_response
+from daduhe_common import (
+    TraceMiddleware,
+    info,
+    error as log_error,
+    get_or_generate_trace_id,
+    create_health_router,
+    ErrorCode,
+    error_response,
+)
 
 SERVICE = "graph-engine"
 
 app = FastAPI(title="graph-engine", version="0.1.0")
+app.add_middleware(TraceMiddleware, service=SERVICE)
 
 # 健康检查
 app.include_router(create_health_router(SERVICE, {}))

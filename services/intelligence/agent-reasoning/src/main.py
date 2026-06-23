@@ -1,20 +1,21 @@
 """agent-reasoning: Agent推理层 — 智能问答、LLM调用工厂、检索模式选择"""
-import os
-import sys
-
-sys.path.insert(0, "/app")
-
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from common.logging import info, error as log_error
-from common.tracing import get_or_generate_trace_id
-from common.health import create_health_router
-from common.error_codes import ErrorCode, error_response
+from daduhe_common import (
+    TraceMiddleware,
+    info,
+    error as log_error,
+    get_or_generate_trace_id,
+    create_health_router,
+    ErrorCode,
+    error_response,
+)
 
 SERVICE = "agent-reasoning"
 
 app = FastAPI(title="agent-reasoning", version="0.1.0")
+app.add_middleware(TraceMiddleware, service=SERVICE)
 
 app.include_router(create_health_router(SERVICE, {}))
 
