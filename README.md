@@ -108,3 +108,18 @@ docker compose up -d
 ## 接口契约文档
 
 详见 `docs/` 目录下的三份 ICD 文档。
+
+---
+
+## 种子数据 ID 约定
+
+所有测试/种子数据中的 ID 统一以 `seed` 为前缀，用于与生产数据区分：
+
+| 资源 | ID 格式 | 示例 |
+|------|---------|------|
+| 文档 (doc_id) | `seed-doc-{序号}` | `seed-doc-001` |
+| Chunk (chunk_id) | `seed-chunk-{序号}` | `seed-chunk-001` |
+| 测试事件 (event_id) | `evt-test-{序号}` | `evt-test-001` |
+| 测试索引任务 (task_id) | `idx-task-{trace_suffix}` | `idx-task-a1b2c3d4` |
+
+生产环境 ID 使用 UUID 或业务编号，**禁止使用 `seed` 前缀**。
