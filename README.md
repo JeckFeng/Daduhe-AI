@@ -73,8 +73,53 @@ bge-m3:latest模型已经在服务器上通过ollama部署；
 
 ---
 
-### vLLM配置
-本地大模型正在部署中，可以先使用API-KEY
+## 服务器已部署的大模型
+
+### Qwen3.6-27B-GGUF
+
+**部署方式**: 通过 llama.cpp 部署
+
+```bash
+cd /home/gyyknowledge/llama.cpp/build/bin
+./llama-server -m ~/modelscope/Qwen3.6-27B-GGUF/Qwen3.6-27B-Q4_K_M.gguf \
+  --mmproj ~/modelscope/Qwen3.6-27B-GGUF/mmproj-Qwen3.6-27B-BF16.gguf \
+  --port 8000 --host 0.0.0.0 -ngl 99 --jinja -cb -t 12 -b 1024 -ub 512 \
+  --reasoning off --flash-attn on --spec-type ngram-map-k4v
+```
+
+**推荐使用场景**: 知识推理
+
+### Qwen3.6-35B-A3B-GGUF
+
+**部署方式**: 通过 llama.cpp 部署
+
+```bash
+cd /home/gyyknowledge/llama.cpp/build/bin
+./llama-server -m ~/modelscope/Qwen3.6-35B-A3B-GGUF/Qwen3.6-35B-A3B-Q4_K_M.gguf \
+  --mmproj ~/modelscope/Qwen3.6-35B-A3B-GGUF/mmproj-Qwen3.6-35B-A3B-BF16.gguf \
+  --port 8000 --host 0.0.0.0 -ngl 99 --jinja -cb -t 12 -b 1024 -ub 512 \
+  --reasoning off --flash-attn on --spec-type ngram-map-k4v
+```
+
+**推荐使用场景**: 图像识别、知识推理
+
+### llama-server 参数说明
+
+| 参数 | 含义 | 详细说明 |
+| :--- | :--- | :--- |
+| `-m` | 模型路径 (Model) | 指定加载的 GGUF 格式主模型文件路径。 |
+| `--mmproj` | 多模态投影文件 | 用于视觉模型，将视觉特征投射到文本空间；纯文本模型可省略。 |
+| `--port` | 服务端口 | 指定 HTTP 服务监听的端口号（如 8000）。 |
+| `--host` | 监听地址 | `0.0.0.0` 允许远程访问，`127.0.0.1` 仅限本机。 |
+| `-ngl` | GPU 卸载层数 | 将 N 层模型加载至 GPU，`99` 表示尽可能全部加载以加速。 |
+| `--jinja` | Jinja 模板引擎 | 启用对话模板，确保输入格式与模型训练时一致。 |
+| `-cb` | 彩色日志输出 | 控制台高亮显示日志，便于调试。 |
+| `-t` | 推理线程数 | CPU 并行推理的线程数量（如 12）。 |
+| `-b` | 提示批处理大小 | 处理输入 Prompt 时的批次大小，影响显存占用与吞吐量。 |
+| `-ub` | 生成解批处理大小 | 文本生成阶段的最大批次大小。 |
+| `--reasoning off` | 推理模式 | `off` 关闭思维链输出，`on` 则显示推理过程。 |
+| `--flash-attn on` | Flash Attention | 开启后可降低显存并加速长文本推理。 |
+| `--spec-type` | 推测解码类型 | 使用 n-gram 缓存加速生成（如 `ngram-map-k4v`）。 |
 
 ---
 
