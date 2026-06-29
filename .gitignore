@@ -30,5 +30,8 @@ Thumbs.db
 *.log
 logs/
 
+# Python
+*.egg-info/
+
 # Docker
 docker-data/

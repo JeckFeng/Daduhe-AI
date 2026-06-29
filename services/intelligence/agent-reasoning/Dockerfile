@@ -1,6 +1,6 @@
-FROM python:3.12-slim
+FROM python:3.11-slim
 WORKDIR /app
-COPY common/ /app/common/
+COPY common/daduhe_common/ /app/daduhe_common/
 COPY agent-reasoning/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY agent-reasoning/src/ /app/src/
