@@ -61,7 +61,8 @@ def search_vector(
     where_sql = " AND ".join(where_clauses)
 
     cur = pg_conn.cursor()
-    cur.execute(f"""
+    cur.execute(
+        f"""
         SELECT
             c.chunk_id,
             c.chunk_text,
@@ -74,27 +75,40 @@ def search_vector(
         FROM metadata.chunks c
         JOIN metadata.documents d ON c.doc_id = d.doc_id
         WHERE {where_sql}
-    """, params)
+    """,
+        params,
+    )
     rows = cur.fetchall()
     cur.close()
 
     results = []
     for row in rows:
-        chunk_id, chunk_text, page_number, section_title, section_number, doc_id, doc_type, title = row
-        results.append(ChunkResult(
-            chunk_id=chunk_id,
-            text=chunk_text,
-            score=round(hits[chunk_id], 4),
-            metadata=ChunkMetadata(
-                doc_id=doc_id,
-                doc_type=doc_type,
-                title=title,
-                section_number=section_number,
-                section_title=section_title,
-                page_number=page_number,
-                download_url=f"/api/v1/documents/{doc_id}/download",
-            ),
-        ))
+        (
+            chunk_id,
+            chunk_text,
+            page_number,
+            section_title,
+            section_number,
+            doc_id,
+            doc_type,
+            title,
+        ) = row
+        results.append(
+            ChunkResult(
+                chunk_id=chunk_id,
+                text=chunk_text,
+                score=round(hits[chunk_id], 4),
+                metadata=ChunkMetadata(
+                    doc_id=doc_id,
+                    doc_type=doc_type,
+                    title=title,
+                    section_number=section_number,
+                    section_title=section_title,
+                    page_number=page_number,
+                    download_url=f"/api/v1/documents/{doc_id}/download",
+                ),
+            )
+        )
 
     # Sort by score descending
     results.sort(key=lambda x: x.score, reverse=True)

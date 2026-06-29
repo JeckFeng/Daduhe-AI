@@ -610,13 +610,15 @@ def insert_embeddings_metadata(
             "ON CONFLICT (chunk_id) DO NOTHING",
             (embedding_id, chunk["chunk_id"], model, dimension, milvus_id),
         )
-        records.append({
-            "embedding_id": embedding_id,
-            "chunk_id": chunk["chunk_id"],
-            "embedding_model": model,
-            "vector_dimension": dimension,
-            "milvus_id": milvus_id,
-        })
+        records.append(
+            {
+                "embedding_id": embedding_id,
+                "chunk_id": chunk["chunk_id"],
+                "embedding_model": model,
+                "vector_dimension": dimension,
+                "milvus_id": milvus_id,
+            }
+        )
     return records
 
 
@@ -660,7 +662,6 @@ def retrieve_similar_chunks(
     for hit in search_results[0]:
         entity = hit.get("entity", {})
         milvus_chunk_id = entity.get("chunk_id", "")
-        milvus_doc_id = entity.get("doc_id", "")
         if not milvus_chunk_id:
             continue
         if milvus_chunk_id in seen:
@@ -676,13 +677,15 @@ def retrieve_similar_chunks(
         )
         row = cur.fetchone()
         if row:
-            results.append({
-                "chunk_id": row[0],
-                "chunk_text": row[1],
-                "doc_id": row[2],
-                "title": row[3],
-                "score": hit["distance"],
-            })
+            results.append(
+                {
+                    "chunk_id": row[0],
+                    "chunk_text": row[1],
+                    "doc_id": row[2],
+                    "title": row[3],
+                    "score": hit["distance"],
+                }
+            )
 
     return results
 
@@ -755,7 +758,9 @@ if __name__ == "__main__":
 
     print()
     print("Done.")
-    print(f"  PostgreSQL: {len(SEED_DOCUMENTS)} documents, {len(SEED_CHUNKS)} chunks, {len(SEED_CHUNKS)} embeddings")
+    print(
+        f"  PostgreSQL: {len(SEED_DOCUMENTS)} documents, {len(SEED_CHUNKS)} chunks, {len(SEED_CHUNKS)} embeddings"
+    )
     print(f"  Milvus:     seed_chunks collection ({len(SEED_CHUNKS)} vectors)")
     print()
     print("Run tests:  uv run pytest tests/test_seed.py -v")

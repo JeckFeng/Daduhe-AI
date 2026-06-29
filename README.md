@@ -9,6 +9,10 @@
 
 ```
 文档解析与数据输入(HT) → 知识抽取层(LSL) → 知识图谱层(FXL) → 检索引擎层(FXL) → Agent推理层(FXL)
+                                                    ↑                        │
+                                                    │     llm-gateway:8004    │
+                                                    └────────── 共 用 ────────┘
+                                          (LLM调用工厂 + PG缓存)
 ```
 
 ---
@@ -22,6 +26,7 @@
 | graph-engine | FXL | Python | 8001 | `graph-engine` |
 | search-engine | FXL | Python | 8002 | `search-engine` |
 | agent-reasoning | FXL | Python | 8003 | `agent-reasoning` |
+| llm-gateway | FXL | Python | 8004 | `llm-gateway` |
 
 ---
 
@@ -31,7 +36,7 @@
 |------|------|
 | PostgreSQL | 5432 |
 | MinIO | 9000 (API) / 9001 (Console) |
-| Neo4j | 7474 (HTTP) / 7687 (Bolt) |
+| Memgraph | 17687 (Bolt) / 17444 (HTTP/Lab) |
 | Milvus | 19530 |
 | Ollama | 11434 |
 
@@ -62,6 +67,11 @@ IP:10.222.124.211
 ssh -L 5434:localhost:5432 gyyknowledge@10.222.124.211
 ```
 
+### 建立Memgraph SSH隧道
+```bash 
+ssh -L 17687:localhost:17687 gyyknowledge@10.222.124.211
+```
+
 ---
 
 ### ollama 配置
@@ -71,6 +81,10 @@ bge-m3:latest模型已经在服务器上通过ollama部署；
 
 通过`ollama serve`命令启动ollama 服务
 
+### 建立Ollama的SSH隧道
+```bash 
+ssh -L 11435:localhost:11434 gyyknowledge@10.222.124.211
+```
 ---
 
 ## 服务器已部署的大模型
@@ -138,7 +152,24 @@ IP: 10.222.124.211
 
 ---
 
+容器启动命令：
+```bash
+podman run -d   --name milvus-standalone   --security-opt seccomp:unconfined   -e ETCD_USE_EMBED=true   -e ETCD_DATA_DIR=/var/lib/milvus/etcd   -e ETCD_CONFIG_PATH=/milvus/configs/embedEtcd.yaml   -e COMMON_STORAGETYPE=local   -e DEPLOY_MODE=STANDALONE   -v $(pwd)/volumes/milvus:/var/lib/milvus   -v $(pwd)/embedEtcd.yaml:/milvus/configs/embedEtcd.yaml   -v $(pwd)/user.yaml:/milvus/configs/user.yaml   -p 19530:19530   -p 9091:9091   -p 2379:2379   --health-cmd="curl -f http://localhost:9091/healthz"   --health-interval=30s   --health-start-period=90s   --health-timeout=20s   --health-retries=3   docker.m.daocloud.io/milvusdb/milvus:v3.0-beta   milvus run standalone
+
+```
+
 ### 其他配置自行部署
+
+---
+
+## LLM 缓存
+
+llm-gateway 内置 PG 缓存，key=`md5(system+user+model+host)`，TTL 默认 7 天。
+
+| 配置项 | 环境变量 | 默认值 |
+|--------|---------|--------|
+| 缓存 TTL | `LLM_GATEWAY_CACHE_TTL_SECONDS` | `604800`（7天），设为 0 禁用缓存 |
+| PG 连接 | `LLM_GATEWAY_PG_HOST/PORT/USER/PASSWORD/DATABASE` | 同 graph-engine |
 
 ---
 

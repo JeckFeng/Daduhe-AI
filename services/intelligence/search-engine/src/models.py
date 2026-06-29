@@ -2,6 +2,7 @@
 
 ICD-03 §5.2 defines the search API contract.
 """
+
 from typing import Literal, Annotated, Optional
 from datetime import date
 
@@ -11,6 +12,7 @@ from pydantic import BaseModel, Field, Discriminator, Tag
 # ═══════════════════════════════════════════════════════════════
 # Request
 # ═══════════════════════════════════════════════════════════════
+
 
 class SearchFilters(BaseModel):
     doc_type: Optional[list[str]] = None
@@ -30,6 +32,7 @@ class SearchRequest(BaseModel):
 # ═══════════════════════════════════════════════════════════════
 # Response
 # ═══════════════════════════════════════════════════════════════
+
 
 class ChunkMetadata(BaseModel):
     doc_id: str

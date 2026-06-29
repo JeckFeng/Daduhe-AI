@@ -23,7 +23,7 @@
 | Embedding模型 | Ollama（本地部署） | 文本向量化，产出embedding向量 |
 | LLM（在线） | DeepSeek API | Agent在线推理、图谱离线实体关系抽取 |
 | LLM（本地） | vLLM | 本地大模型部署，敏感数据场景使用 |
-| 图数据库 | Neo4j | 知识图谱持久化与Cypher推理查询 |
+| 图数据库 | Memgraph | 知识图谱持久化与Cypher推理查询 |
 | 向量数据库 | Milvus | Embedding向量存储与相似度检索 |
 | 容器化 | Docker + Docker Compose | 开发/测试环境统一部署 |
 | 开发语言 | HT: Java / LSL: TypeScript / FXL: Python | 各自擅长 |
@@ -42,7 +42,7 @@
 |---------|--------|------|
 | PostgreSQL | `postgres` | 5432 |
 | MinIO | `minio` | 9000 (API) / 9001 (Console) |
-| Neo4j | `neo4j` | 7474 (HTTP) / 7687 (Bolt) |
+| Memgraph | `memgraph` | 17687 (Bolt) / 17444 (HTTP/Lab) |
 | Milvus | `milvus-standalone` | 19530 |
 | Ollama | `ollama` | 11434 |
 

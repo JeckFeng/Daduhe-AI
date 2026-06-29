@@ -4,6 +4,7 @@ Currently = vector results only, with empty slots for keyword, fuzzy, and rules.
 The function signature is designed so adding a new source is just passing an extra
 rank list — no signature changes needed.
 """
+
 from pymilvus import MilvusClient
 
 from src.models import ChunkResult, SearchFilters, RuleResult
@@ -33,7 +34,12 @@ def search_hybrid(
 
     # Vector (always active)
     vector_results = search_vector(
-        milvus_client, ollama_url, pg_conn, query, filters, top_k,
+        milvus_client,
+        ollama_url,
+        pg_conn,
+        query,
+        filters,
+        top_k,
         collection_name,
     )
     source_lists.append(vector_results)

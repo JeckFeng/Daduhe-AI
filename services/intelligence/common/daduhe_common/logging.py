@@ -1,8 +1,7 @@
 """统一JSON结构化日志"""
+
 import json
 import sys
-import time
-import uuid
 from datetime import datetime, timezone
 
 

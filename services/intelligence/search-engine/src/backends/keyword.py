@@ -1,7 +1,9 @@
 from src.models import ChunkResult, ChunkMetadata, SearchFilters
 
 
-def search_keyword(conn, query: str, filters: SearchFilters, top_k: int) -> list[ChunkResult]:
+def search_keyword(
+    conn, query: str, filters: SearchFilters, top_k: int
+) -> list[ChunkResult]:
     """ILIKE keyword search with PG JOIN for metadata assembly."""
     where_clauses = ["LOWER(c.chunk_text) LIKE LOWER(%(pattern)s)"]
     params = {"pattern": f"%{query}%", "limit": top_k}
@@ -41,20 +43,32 @@ def search_keyword(conn, query: str, filters: SearchFilters, top_k: int) -> list
 
     results = []
     for row in rows:
-        chunk_id, chunk_text, page_number, section_title, section_number, doc_id, doc_type, title, hit_count = row
-        results.append(ChunkResult(
-            chunk_id=chunk_id,
-            text=chunk_text,
-            score=float(hit_count or 0),
-            metadata=ChunkMetadata(
-                doc_id=doc_id,
-                doc_type=doc_type,
-                title=title,
-                section_number=section_number,
-                section_title=section_title,
-                page_number=page_number,
-                download_url=f"/api/v1/documents/{doc_id}/download",
-            ),
-        ))
+        (
+            chunk_id,
+            chunk_text,
+            page_number,
+            section_title,
+            section_number,
+            doc_id,
+            doc_type,
+            title,
+            hit_count,
+        ) = row
+        results.append(
+            ChunkResult(
+                chunk_id=chunk_id,
+                text=chunk_text,
+                score=float(hit_count or 0),
+                metadata=ChunkMetadata(
+                    doc_id=doc_id,
+                    doc_type=doc_type,
+                    title=title,
+                    section_number=section_number,
+                    section_title=section_title,
+                    page_number=page_number,
+                    download_url=f"/api/v1/documents/{doc_id}/download",
+                ),
+            )
+        )
 
     return results

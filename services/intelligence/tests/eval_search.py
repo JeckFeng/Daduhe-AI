@@ -2,8 +2,8 @@
 
 Run: uv run python tests/eval_search.py
 """
+
 import time
-import json
 import statistics
 import sys
 from pathlib import Path
@@ -120,11 +120,14 @@ MEASURE_ITERATIONS = 3
 
 def run_query(query, mode, top_k=10):
     """Run a single search and return (elapsed_ms, response_json)."""
-    r = client.post("/api/v1/search", json={
-        "query": query,
-        "mode": mode,
-        "top_k": top_k,
-    })
+    r = client.post(
+        "/api/v1/search",
+        json={
+            "query": query,
+            "mode": mode,
+            "top_k": top_k,
+        },
+    )
     return r.status_code, r.json()
 
 
@@ -169,12 +172,15 @@ def eval_case(tc):
         # Precision@K: fraction of top-k results containing at least one expected term
         if tc["expected_terms"] and hits:
             relevant = sum(
-                1 for h in hits
+                1
+                for h in hits
                 if any(t in h.get("text", "") for t in tc["expected_terms"])
             )
             precision_at_k = relevant / len(hits)
         else:
-            precision_at_k = 0.0 if tc["expected_terms"] else None  # None = not applicable
+            precision_at_k = (
+                0.0 if tc["expected_terms"] else None
+            )  # None = not applicable
 
         # Average relevance across all results
         if hits:
@@ -225,9 +231,13 @@ def main():
     print("=" * 90)
     print("SEARCH-ENGINE EVALUATION REPORT")
     print("=" * 90)
-    print(f"Data: 2 documents, 15 chunks (水利规范)")
-    print(f"Infra: PG (localhost:5434), Milvus (10.222.124.211), Ollama (localhost:11435)")
-    print(f"Iterations per test: {MEASURE_ITERATIONS} (after {WARMUP_ITERATIONS} warmup)")
+    print("Data: 2 documents, 15 chunks (水利规范)")
+    print(
+        "Infra: PG (localhost:5434), Milvus (10.222.124.211), Ollama (localhost:11435)"
+    )
+    print(
+        f"Iterations per test: {MEASURE_ITERATIONS} (after {WARMUP_ITERATIONS} warmup)"
+    )
     print()
 
     all_results = {}
@@ -241,15 +251,21 @@ def main():
         for mode, r in results.items():
             lat = color_for_latency(r["avg_ms"])
             prec = color_for_precision(r["precision_at_k"])
-            pk_str = f"{r['precision_at_k']:.2f}" if r["precision_at_k"] is not None else "N/A"
-            print(f"    {mode:8s} {lat} {r['avg_ms']:7.1f}ms avg  "
-                  f"P@K={pk_str} {prec}  "
-                  f"rel={r['avg_relevance']:.2f}  "
-                  f"hits={r['total_hits']}  "
-                  f"scores={r['top_scores'][:3]}")
+            pk_str = (
+                f"{r['precision_at_k']:.2f}"
+                if r["precision_at_k"] is not None
+                else "N/A"
+            )
+            print(
+                f"    {mode:8s} {lat} {r['avg_ms']:7.1f}ms avg  "
+                f"P@K={pk_str} {prec}  "
+                f"rel={r['avg_relevance']:.2f}  "
+                f"hits={r['total_hits']}  "
+                f"scores={r['top_scores'][:3]}"
+            )
             if r["top_texts_preview"]:
                 for ti, t in enumerate(r["top_texts_preview"]):
-                    print(f"            #{ti+1}: {t[:75]}...")
+                    print(f"            #{ti + 1}: {t[:75]}...")
         print()
 
     # ═══════════════════════════════════════════════════════════════
@@ -275,7 +291,9 @@ def main():
             mode_stats[mode]["rel_scores"].append(r["avg_relevance"])
             mode_stats[mode]["hit_counts"].append(r["result_count"])
 
-    print(f"\n{'Mode':<10} {'Avg Lat':>8} {'P50 Lat':>8} {'Max Lat':>8} {'Avg Prec':>9} {'Avg Rel':>8} {'Avg Hits':>9}")
+    print(
+        f"\n{'Mode':<10} {'Avg Lat':>8} {'P50 Lat':>8} {'Max Lat':>8} {'Avg Prec':>9} {'Avg Rel':>8} {'Avg Hits':>9}"
+    )
     print("-" * 65)
     for mode in ["keyword", "fuzzy", "vector", "hybrid"]:
         if mode not in mode_stats:
@@ -287,8 +305,10 @@ def main():
         avg_prec = statistics.mean(s["precisions"]) if s["precisions"] else 0
         avg_rel = statistics.mean(s["rel_scores"])
         avg_hits = statistics.mean(s["hit_counts"])
-        print(f"{mode:<10} {avg_lat:7.1f}ms {p50_lat:7.1f}ms {max_lat:7.1f}ms "
-              f"{avg_prec:8.2f} {avg_rel:8.3f} {avg_hits:8.1f}")
+        print(
+            f"{mode:<10} {avg_lat:7.1f}ms {p50_lat:7.1f}ms {max_lat:7.1f}ms "
+            f"{avg_prec:8.2f} {avg_rel:8.3f} {avg_hits:8.1f}"
+        )
 
     # ═══════════════════════════════════════════════════════════════
     # Evaluation
@@ -306,7 +326,6 @@ def main():
         if mode not in mode_stats:
             continue
         avg = statistics.mean(mode_stats[mode]["timings"])
-        p95 = max(mode_stats[mode]["timings"])
         if avg < 100:
             passes.append(f"{mode} latency: avg={avg:.0f}ms — excellent")
         elif avg < 500:
@@ -324,9 +343,13 @@ def main():
         if avg_prec >= 0.8:
             passes.append(f"{mode} precision@{10}: {avg_prec:.2f} — good")
         elif avg_prec >= 0.5:
-            passes.append(f"{mode} precision@{10}: {avg_prec:.2f} — adequate for RRF fusion")
+            passes.append(
+                f"{mode} precision@{10}: {avg_prec:.2f} — adequate for RRF fusion"
+            )
         else:
-            issues.append(f"{mode} precision@{10}: {avg_prec:.2f} — may need threshold tuning")
+            issues.append(
+                f"{mode} precision@{10}: {avg_prec:.2f} — may need threshold tuning"
+            )
 
     # Non-existent query handling
     ne_results = all_results.get("NE1", {})
@@ -334,7 +357,9 @@ def main():
         if r["result_count"] == 0:
             passes.append(f"{mode} non-existent query: correctly returned empty")
         else:
-            issues.append(f"{mode} non-existent query: returned {r['result_count']} results (should be 0)")
+            issues.append(
+                f"{mode} non-existent query: returned {r['result_count']} results (should be 0)"
+            )
 
     print("\nPASSES:")
     for p in passes:

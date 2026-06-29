@@ -1,4 +1,5 @@
 """健康检查端点"""
+
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 

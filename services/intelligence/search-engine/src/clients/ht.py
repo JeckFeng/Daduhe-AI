@@ -5,6 +5,7 @@ The POST /api/v1/search/index endpoint already accepts these fields directly via
 request.json(); this module provides typed models for when we switch to Pydantic
 validation of the callback payload.
 """
+
 from typing import Optional
 
 from pydantic import BaseModel
@@ -16,6 +17,7 @@ class SearchIndexRequest(BaseModel):
     HT sends this after completing document processing. search-engine then
     reads chunks from PG, generates embeddings, and upserts into Milvus.
     """
+
     event_id: str
     trace_id: str
     doc_id: str

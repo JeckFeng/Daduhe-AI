@@ -1,4 +1,5 @@
 """search-engine: 多模式检索引擎（关键词/模糊/向量/混合）"""
+
 import psycopg2
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -7,7 +8,6 @@ from pymilvus import MilvusClient
 from daduhe_common import (
     TraceMiddleware,
     info,
-    error as log_error,
     get_or_generate_trace_id,
     create_health_router,
 )
@@ -32,8 +32,10 @@ milvus_client = MilvusClient(
 
 def get_pg_conn():
     return psycopg2.connect(
-        host=settings.pg_host, port=settings.pg_port,
-        user=settings.pg_user, password=settings.pg_password,
+        host=settings.pg_host,
+        port=settings.pg_port,
+        user=settings.pg_user,
+        password=settings.pg_password,
         dbname=settings.pg_dbname,
     )
 
@@ -60,7 +62,14 @@ async def search(request: Request):
             },
         )
 
-    info(SERVICE, "search executed", trace_id, query=req.query, mode=req.mode, top_k=req.top_k)
+    info(
+        SERVICE,
+        "search executed",
+        trace_id,
+        query=req.query,
+        mode=req.mode,
+        top_k=req.top_k,
+    )
 
     conn = get_pg_conn()
     conn.autocommit = True
@@ -71,13 +80,23 @@ async def search(request: Request):
             results = search_fuzzy(conn, req.query, req.filters, req.top_k)
         elif req.mode == "vector":
             results = search_vector(
-                milvus_client, settings.ollama_url, conn,
-                req.query, req.filters, req.top_k, settings.milvus_collection,
+                milvus_client,
+                settings.ollama_url,
+                conn,
+                req.query,
+                req.filters,
+                req.top_k,
+                settings.milvus_collection,
             )
         elif req.mode == "hybrid":
             results = search_hybrid(
-                milvus_client, settings.ollama_url, conn,
-                req.query, req.filters, req.top_k, settings.milvus_collection,
+                milvus_client,
+                settings.ollama_url,
+                conn,
+                req.query,
+                req.filters,
+                req.top_k,
+                settings.milvus_collection,
                 rrf_k=settings.rrf_k,
             )
         else:
@@ -130,6 +149,7 @@ async def search_index(request: Request):
 
     # 2. Generate embeddings
     import httpx
+
     vectors = []
     for chunk in chunks:
         resp = httpx.post(
@@ -146,9 +166,12 @@ async def search_index(request: Request):
     # Ensure collection exists
     if not milvus_client.has_collection(coll):
         from pymilvus import DataType
+
         schema = milvus_client.create_schema(auto_id=True, enable_dynamic_field=True)
         schema.add_field(field_name="id", datatype=DataType.INT64, is_primary=True)
-        schema.add_field(field_name="chunk_id", datatype=DataType.VARCHAR, max_length=64)
+        schema.add_field(
+            field_name="chunk_id", datatype=DataType.VARCHAR, max_length=64
+        )
         schema.add_field(field_name="doc_id", datatype=DataType.VARCHAR, max_length=64)
         schema.add_field(field_name="vector", datatype=DataType.FLOAT_VECTOR, dim=1024)
         milvus_client.create_collection(collection_name=coll, schema=schema)
@@ -156,7 +179,9 @@ async def search_index(request: Request):
     # Delete existing data for this doc_id (idempotent upsert)
     try:
         milvus_client.load_collection(coll)
-        existing = milvus_client.query(coll, filter=f'doc_id == "{doc_id}"', output_fields=["id"], limit=100)
+        existing = milvus_client.query(
+            coll, filter=f'doc_id == "{doc_id}"', output_fields=["id"], limit=100
+        )
         if existing:
             ids_to_delete = [e["id"] for e in existing]
             milvus_client.delete(coll, ids=ids_to_delete)
@@ -181,8 +206,10 @@ async def search_index(request: Request):
         nlist = min(1024, max(1, len(chunks) // 2))
         index_params = milvus_client.prepare_index_params()
         index_params.add_index(
-            field_name="vector", index_type="IVF_FLAT",
-            metric_type="COSINE", params={"nlist": nlist},
+            field_name="vector",
+            index_type="IVF_FLAT",
+            metric_type="COSINE",
+            params={"nlist": nlist},
         )
         try:
             milvus_client.create_index(collection_name=coll, index_params=index_params)
@@ -195,16 +222,26 @@ async def search_index(request: Request):
     except Exception:
         pass
 
-    info(SERVICE, "index build completed", trace_id, doc_id=doc_id,
-         chunk_count=len(chunks), inserted=insert_result["insert_count"])
+    info(
+        SERVICE,
+        "index build completed",
+        trace_id,
+        doc_id=doc_id,
+        chunk_count=len(chunks),
+        inserted=insert_result["insert_count"],
+    )
 
     return JSONResponse(
         status_code=202,
         content={
             "code": 0,
             "message": "accepted",
-            "data": {"task_id": task_id, "status": "completed",
-                     "chunk_count": len(chunks), "inserted": insert_result["insert_count"]},
+            "data": {
+                "task_id": task_id,
+                "status": "completed",
+                "chunk_count": len(chunks),
+                "inserted": insert_result["insert_count"],
+            },
         },
     )
 
@@ -212,9 +249,11 @@ async def search_index(request: Request):
 @app.get("/metrics")
 async def metrics():
     from fastapi.responses import PlainTextResponse
+
     return PlainTextResponse("# TODO: daduh_* metrics\n")
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8002)

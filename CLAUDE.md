@@ -19,7 +19,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
         search-engine(FXL/Python) ←───┘
                 │
                 ▼
-        agent-reasoning(FXL/Python) ←── graph-engine(FXL/Python) → Neo4j
+        agent-reasoning(FXL/Python) ←── graph-engine(FXL/Python) → Memgraph
                 │
                 ▼
         用户问答 (POST /api/v1/chat)
@@ -27,7 +27,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **doc-parser** (HT, Java 21, Spring Boot 3.3, port 8080): 多格式文档解析（PDF/Word/Markdown/xlsx）、分块、向量化、元数据抽取。写入四层数据资产：`metadata.documents → metadata.markdown_docs → metadata.chunks → metadata.embeddings` + Milvus 向量。
 - **rule-extractor** (LSL, TypeScript, Express, port 3000): 从 chunk 中抽取结构化规则（参数化阈值、条件），构建可检索规则库供下游查询。
-- **graph-engine** (FXL, Python, FastAPI, port 8001): LLM 驱动的实体关系抽取，写入 Neo4j，提供 Cypher 推理查询。
+- **graph-engine** (FXL, Python, FastAPI, port 8001): LLM 驱动的实体关系抽取，写入 Memgraph，提供 Cypher 推理查询。
 - **search-engine** (FXL, Python, FastAPI, port 8002): 多模式检索（keyword/fuzzy/vector/hybrid），同时检索 Milvus 中的 chunk 和 LSL 的规则库。
 - **agent-reasoning** (FXL, Python, FastAPI, port 8003): 意图识别 → 检索模式选择 → 调用 search-engine → LLM 生成答案 → 组装溯源引用。也作为 LLM 调用工厂供 graph-engine 使用。
 
@@ -37,7 +37,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 |------|------|----------|
 | PostgreSQL (pgvector) | 5432 | `daduhe`/`daduhe_dev`, 数据库 `daduhe` |
 | MinIO | 9000 (API), 9001 (Console) | `minioadmin`/`minioadmin` |
-| Neo4j | 7474 (HTTP), 7687 (Bolt) | `neo4j`/`daduhe123` |
+| Memgraph | 17687 (Bolt), 17444 (HTTP/Lab) | 无需认证（默认） |
 | Milvus | 19530 | 生产环境: `daduhe`/`gis31415`@10.222.124.211 |
 | Ollama | 11434 | 本地 embedding 模型 `bge-m3:latest` |
 | etcd | 2379 | Milvus 依赖 |
@@ -47,6 +47,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **SSH 隧道连接远程 PostgreSQL**:
 ```bash
 ssh -L 5434:localhost:5432 gyyknowledge@10.222.124.211
+```
+
+**SSH 隧道连接远程 Memgraph**:
+```bash
+ssh -L 17687:localhost:17687 gyyknowledge@10.222.124.211
 ```
 
 ## 开发命令

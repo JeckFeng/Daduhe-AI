@@ -40,20 +40,16 @@ services:
       timeout: 3s
       retries: 5
 
-  neo4j:
-    image: neo4j:5-community
-    container_name: neo4j
-    environment:
-      NEO4J_AUTH: neo4j/daduhe123
-      NEO4J_PLUGINS: '["apoc"]'
+  memgraph:
+    image: memgraph/memgraph-mage:3.10.1
+    container_name: memgraph
     ports:
-      - "7474:7474"
-      - "7687:7687"
+      - "17687:7687"
+      - "17444:7444"
     volumes:
-      - neo4j_data:/data
-      - neo4j_logs:/logs
+      - memgraph_data:/var/lib/memgraph
     healthcheck:
-      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "daduhe123", "RETURN 1"]
+      test: ["CMD", "mgconsole", "--host", "localhost", "--port", "7687", "-c", "RETURN 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -171,6 +167,36 @@ services:
       timeout: 3s
       retries: 3
 
+  # ============================================================
+  # FXL Python 服务 (intelligence workspace)
+  # ============================================================
+
+  llm-gateway:
+    build:
+      context: ./services/intelligence
+      dockerfile: llm-gateway/Dockerfile
+    container_name: llm-gateway
+    ports:
+      - "8004:8004"
+    environment:
+      LLM_GATEWAY_DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      LLM_GATEWAY_DEEPSEEK_API_URL: https://api.deepseek.com/v1
+      LLM_GATEWAY_VLLM_URL: ${VLLM_URL:-http://10.222.124.211:8000/v1}
+      LLM_GATEWAY_PG_HOST: postgres
+      LLM_GATEWAY_PG_PORT: "5432"
+      LLM_GATEWAY_PG_USER: daduhe
+      LLM_GATEWAY_PG_PASSWORD: daduhe_dev
+      LLM_GATEWAY_PG_DATABASE: daduhe
+      LLM_GATEWAY_CACHE_TTL_SECONDS: "604800"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
   graph-engine:
     build:
       context: ./services/intelligence
@@ -179,23 +205,36 @@ services:
     ports:
       - "8001:8001"
     environment:
-      DB_HOST: postgres
-      DB_PORT: "5432"
-      DB_USER: daduhe
-      DB_PASSWORD: daduhe_dev
-      DB_NAME: daduhe
-      NEO4J_URI: bolt://neo4j:7687
-      NEO4J_USER: neo4j
-      NEO4J_PASSWORD: daduhe123
-      DOC_PARSER_URL: http://doc-parser:8080
-      AGENT_REASONING_URL: http://agent-reasoning:8003
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
-      DEEPSEEK_BASE_URL: https://api.deepseek.com/v1
+      GRAPH_MEMGRAPH_URI: bolt://memgraph:7687
+      GRAPH_MEMGRAPH_USERNAME: ""
+      GRAPH_MEMGRAPH_PASSWORD: ""
+      GRAPH_MEMGRAPH_DATABASE: memgraph
+      GRAPH_PG_HOST: postgres
+      GRAPH_PG_PORT: "5432"
+      GRAPH_PG_USER: daduhe
+      GRAPH_PG_PASSWORD: daduhe_dev
+      GRAPH_PG_DATABASE: daduhe
+      GRAPH_LLM_GATEWAY_URL: http://llm-gateway:8004
+      GRAPH_MILVUS_URI: http://milvus-standalone:19530
+      GRAPH_MILVUS_USER: ""
+      GRAPH_MILVUS_PASSWORD: ""
+      GRAPH_MILVUS_DB: default
+      GRAPH_MILVUS_ENTITY_COLLECTION: graph_entities
+      GRAPH_MILVUS_RELATION_COLLECTION: graph_relationships
+      GRAPH_OLLAMA_URL: http://ollama:11434
+      GRAPH_EMBEDDING_MODEL: bge-m3
+      GRAPH_EMBEDDING_DIM: "1024"
+      GRAPH_EXTRACTION_MAX_ASYNC: "4"
+      GRAPH_ENTITY_EXTRACT_MAX_GLEANING: "1"
     depends_on:
       postgres:
         condition: service_healthy
-      neo4j:
+      memgraph:
         condition: service_healthy
+      milvus:
+        condition: service_healthy
+      llm-gateway:
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 10s
@@ -210,15 +249,17 @@ services:
     ports:
       - "8002:8002"
     environment:
-      DB_HOST: postgres
-      DB_PORT: "5432"
-      DB_USER: daduhe
-      DB_PASSWORD: daduhe_dev
-      DB_NAME: daduhe
-      MILVUS_HOST: milvus-standalone
-      MILVUS_PORT: "19530"
-      DOC_PARSER_URL: http://doc-parser:8080
-      RULE_EXTRACTOR_URL: http://rule-extractor:3000
+      SEARCH_PG_HOST: postgres
+      SEARCH_PG_PORT: "5432"
+      SEARCH_PG_USER: daduhe
+      SEARCH_PG_PASSWORD: daduhe_dev
+      SEARCH_PG_DBNAME: daduhe
+      SEARCH_MILVUS_URI: http://milvus-standalone:19530
+      SEARCH_MILVUS_USER: ""
+      SEARCH_MILVUS_PASSWORD: ""
+      SEARCH_MILVUS_DB: default
+      SEARCH_MILVUS_COLLECTION: seed_chunks
+      SEARCH_OLLAMA_URL: http://ollama:11434
     depends_on:
       postgres:
         condition: service_healthy
@@ -238,22 +279,23 @@ services:
     ports:
       - "8003:8003"
     environment:
-      DB_HOST: postgres
-      DB_PORT: "5432"
-      DB_USER: daduhe
-      DB_PASSWORD: daduhe_dev
-      DB_NAME: daduhe
-      SEARCH_ENGINE_URL: http://search-engine:8002
-      GRAPH_ENGINE_URL: http://graph-engine:8001
-      DOC_PARSER_URL: http://doc-parser:8080
-      RULE_EXTRACTOR_URL: http://rule-extractor:3000
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
-      DEEPSEEK_BASE_URL: https://api.deepseek.com/v1
-      VLLM_BASE_URL: ${VLLM_BASE_URL:-http://vllm:8000/v1}
+      AGENT_SEARCH_ENGINE_URL: http://search-engine:8002
+      AGENT_LLM_GATEWAY_URL: http://llm-gateway:8004
+      AGENT_GRAPH_ENGINE_URL: http://graph-engine:8001
+      AGENT_DEFAULT_MODEL: vllm-local
+      AGENT_SUPERVISOR_TEMPERATURE: "0.0"
+      AGENT_SUPERVISOR_MAX_TOKENS: "500"
+      AGENT_CONTEXT_RESOLUTION_TEMPERATURE: "0.0"
+      AGENT_CONTEXT_RESOLUTION_MAX_TOKENS: "500"
+      AGENT_GENERATOR_TEMPERATURE: "0.1"
+      AGENT_GENERATOR_MAX_TOKENS: "2000"
+      AGENT_FUSION_TOP_K: "10"
     depends_on:
       search-engine:
         condition: service_started
       graph-engine:
+        condition: service_started
+      llm-gateway:
         condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
@@ -264,8 +306,7 @@ services:
 volumes:
   pgdata:
   minio_data:
-  neo4j_data:
-  neo4j_logs:
+  memgraph_data:
   milvus_data:
   etcd_data:
   ollama_data:

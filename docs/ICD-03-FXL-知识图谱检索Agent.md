@@ -16,7 +16,8 @@
 |------|------|
 | **graph-engine** (8001) | LLM实体关系抽取、知识图谱持久化与推理 |
 | **search-engine** (8002) | 多模式检索引擎：关键词匹配、模糊查询、语义向量检索、混合检索 |
-| **agent-reasoning** (8003) | Query意图识别、检索模式选择、智能问答、Prompt管理、LLM调用工厂、Tool Calling、工作流编排 |
+| **agent-reasoning** (8003) | Query意图识别、检索模式选择、智能问答、Prompt管理、Tool Calling、工作流编排 |
+| **llm-gateway** (8004) | LLM 调用工厂：统一 LLM 入口 + PG 缓存。供 graph-engine 和 agent-reasoning 共用 |
 
 ---
 
@@ -29,7 +30,7 @@
 | Embedding模型 | Ollama（本地部署） | 文本向量化，产出embedding向量 |
 | LLM（在线） | DeepSeek API | Agent在线推理、图谱离线实体关系抽取 |
 | LLM（本地） | vLLM | 本地大模型部署，敏感数据场景使用 |
-| 图数据库 | Neo4j | 知识图谱持久化与Cypher推理查询 |
+| 图数据库 | Memgraph | 知识图谱持久化与Cypher推理查询 |
 | 向量数据库 | Milvus | Embedding向量存储与相似度检索 |
 | 容器化 | Docker + Docker Compose | 开发/测试环境统一部署 |
 | 开发语言 | HT: Java / LSL: TypeScript / FXL: Python | 各自擅长 |
@@ -43,12 +44,13 @@
 | graph-engine | `fxl-graph-engine` | 8001 | FXL |
 | search-engine | `fxl-search-engine` | 8002 | FXL |
 | agent-reasoning | `fxl-agent-reasoning` | 8003 | FXL |
+| llm-gateway | `fxl-llm-gateway` | 8004 | FXL |
 
 | 基础设施 | 容器名 | 端口 |
 |---------|--------|------|
 | PostgreSQL | `postgres` | 5432 |
 | MinIO | `minio` | 9000 (API) / 9001 (Console) |
-| Neo4j | `neo4j` | 7474 (HTTP) / 7687 (Bolt) |
+| Memgraph | `memgraph` | 17687 (Bolt) / 17444 (HTTP/Lab) |
 | Milvus | `milvus-standalone` | 19530 |
 | Ollama | `ollama` | 11434 |
 
@@ -404,19 +406,19 @@ POST /api/v1/chat
 
 citations数组与answer中 `[1]` `[2]` 标记一一对应。前端渲染时将 `[1]` 替换为可点击的引用链接，展示对应的doc_title、section、page，并提供download_url下载原始文档。
 
-### 6.2 LLM调用（内部共享服务）
+### 6.2 LLM调用（llm-gateway 统一入口）
 
 ```
-POST /api/v1/llm/completion
+POST /api/v1/completion
 ```
 
-LLM调用工厂，供graph-engine离线实体关系抽取使用。
+LLM 调用工厂（llm-gateway，port 8004），供 graph-engine 和 agent-reasoning 共用。内置 PG 缓存，cache key = `md5(system+user+model+host)`，TTL 默认 7 天。切换模型后端自动破缓存（host 在 hash 中）。
 
 **Request**
 
 ```json
 {
-  "model": "deepseek-chat",
+  "model": "vllm-local",
   "messages": [
     { "role": "system", "content": "你是水工缺陷领域的实体关系抽取专家..." },
     { "role": "user", "content": "从以下文本中抽取实体和关系: ..." }
@@ -430,12 +432,12 @@ LLM调用工厂，供graph-engine离线实体关系抽取使用。
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| model | string | 是 | `deepseek-chat`（DeepSeek API）/ `vllm-local`（本地vLLM）/ `ollama-embed`（Ollama，仅用于向量化） |
-| messages | array | 是 | OpenAI兼容的messages格式 |
+| model | string | 是 | `deepseek-chat`（DeepSeek API）/ `vllm-local`（本地vLLM） |
+| messages | array | 是 | OpenAI兼容的messages格式，system+user prompt 参与 cache key |
 | temperature | float | 否 | 默认0.1 |
 | max_tokens | integer | 否 | 默认2000 |
-| caller | string | 是 | 调用方服务名，用于鉴权和计费统计 |
-| priority | string | 是 | `realtime`（在线推理，低延迟）/ `batch`（离线任务，高吞吐） |
+| caller | string | 否 | 调用方服务名，用于日志追踪 |
+| priority | string | 否 | `realtime`（在线推理，30s超时）/ `batch`（离线任务，120s超时），默认`batch` |
 
 **Response** (HTTP 200)
 
@@ -444,8 +446,8 @@ LLM调用工厂，供graph-engine离线实体关系抽取使用。
   "code": 0,
   "data": {
     "id": "llm-resp-d4e5f6a7",
-    "content": "{\"entities\": [...], \"relations\": [...]}",
-    "model": "deepseek-chat",
+    "content": "{\"entities\": [...], \"relationships\": [...]}",
+    "model": "vllm-local",
     "usage": {
       "prompt_tokens": 500,
       "completion_tokens": 300
@@ -454,6 +456,8 @@ LLM调用工厂，供graph-engine离线实体关系抽取使用。
   }
 }
 ```
+
+> agent-reasoning 的 `/api/v1/llm/completion` 端点保留作为兼容透传层，内部转发到 llm-gateway。
 
 ---
 
@@ -465,7 +469,8 @@ LLM调用工厂，供graph-engine离线实体关系抽取使用。
 agent-reasoning ──调用──→ search-engine    (POST /api/v1/search)
 agent-reasoning ──调用──→ graph-engine     (POST /api/v1/graph/query)
 agent-reasoning ──调用──→ graph-engine     (POST /api/v1/graph/reasoning)
-graph-engine    ──调用──→ agent-reasoning  (POST /api/v1/llm/completion)
+agent-reasoning ──调用──→ llm-gateway      (POST /api/v1/completion)
+graph-engine    ──调用──→ llm-gateway      (POST /api/v1/completion)
 ```
 
 ---
@@ -588,7 +593,7 @@ X-Trace-Id: {service_short}-{uuid_v4}
 | 端点 | HTTP状态 | 返回体 | 用途 |
 |------|---------|--------|------|
 | `GET /health` | 200/503 | `{"status":"ok"}` | K8s liveness probe |
-| `GET /ready` | 200/503 | `{"status":"ready","checks":{"db":"ok","neo4j":"ok","milvus":"ok"}}` | K8s readiness probe，列出所有外部依赖的状态 |
+| `GET /ready` | 200/503 | `{"status":"ready","checks":{"db":"ok","memgraph":"ok","milvus":"ok"}}` | K8s readiness probe，列出所有外部依赖的状态 |
 
 ---
 

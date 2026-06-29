@@ -4,6 +4,7 @@ These are code contracts — the rule-extractor service is under development by 
 When the service is live, these models can be used directly with httpx to call:
     GET {lsl_base_url}/api/v1/rules/search?keyword=...&category=...&page=...&page_size=...
 """
+
 from typing import Optional
 
 from pydantic import BaseModel
@@ -11,6 +12,7 @@ from pydantic import BaseModel
 
 class RuleSearchParams(BaseModel):
     """Query parameters for GET /api/v1/rules/search (ICD-02 §4.2)."""
+
     keyword: Optional[str] = None
     category: Optional[str] = None
     doc_id: Optional[str] = None

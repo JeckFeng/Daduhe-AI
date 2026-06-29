@@ -1,4 +1,5 @@
 """FastAPI middleware: X-Trace-Id 自动注入与透传"""
+
 import uuid
 
 from fastapi import Request

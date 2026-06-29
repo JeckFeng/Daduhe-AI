@@ -1,5 +1,4 @@
 """统一错误码体系"""
-from typing import Optional
 
 
 class ErrorCode:
@@ -29,9 +28,7 @@ MESSAGES = {
 }
 
 
-def error_response(
-    code: int, trace_id: str = "", **kwargs
-) -> dict:
+def error_response(code: int, trace_id: str = "", **kwargs) -> dict:
     message = MESSAGES.get(code, "unknown error").format(**kwargs)
     resp = {"code": code, "message": message}
     if trace_id:

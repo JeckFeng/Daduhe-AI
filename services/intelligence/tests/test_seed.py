@@ -2,6 +2,7 @@
 Requires remote infrastructure (PostgreSQL, Milvus, Ollama).
 Set SKIP_SEED_TESTS=1 to skip.
 """
+
 import os
 
 import pytest
@@ -36,21 +37,46 @@ def db_conn():
 # ============================================================
 
 REQUIRED_DOCUMENTS_COLUMNS = {
-    "doc_id", "doc_type", "title", "authors", "source_org",
-    "publish_date", "version", "language", "file_format", "file_path",
-    "file_size_bytes", "permission_level", "tags", "abstract",
-    "uploaded_at", "updated_at",
+    "doc_id",
+    "doc_type",
+    "title",
+    "authors",
+    "source_org",
+    "publish_date",
+    "version",
+    "language",
+    "file_format",
+    "file_path",
+    "file_size_bytes",
+    "permission_level",
+    "tags",
+    "abstract",
+    "uploaded_at",
+    "updated_at",
 }
 
 REQUIRED_CHUNKS_COLUMNS = {
-    "chunk_id", "doc_id", "chunk_index", "chunk_text", "page_number",
-    "section_title", "section_number", "char_start", "char_end",
-    "token_count", "parent_chunk_id", "created_at",
+    "chunk_id",
+    "doc_id",
+    "chunk_index",
+    "chunk_text",
+    "page_number",
+    "section_title",
+    "section_number",
+    "char_start",
+    "char_end",
+    "token_count",
+    "parent_chunk_id",
+    "created_at",
 }
 
 REQUIRED_EMBEDDINGS_COLUMNS = {
-    "embedding_id", "chunk_id", "embedding_model", "vector_dimension",
-    "milvus_id", "created_at",
+    "embedding_id",
+    "chunk_id",
+    "embedding_model",
+    "vector_dimension",
+    "milvus_id",
+    "created_at",
 }
 
 
@@ -61,7 +87,9 @@ def test_schema_metadata_exists(db_conn):
     create_schema(db_conn)
 
     cur = db_conn.cursor()
-    cur.execute("SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'metadata'")
+    cur.execute(
+        "SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'metadata'"
+    )
     assert cur.fetchone() is not None, "metadata schema was not created"
 
 
@@ -77,7 +105,9 @@ def test_documents_table_columns_match_icd(db_conn):
         "WHERE table_schema = 'metadata' AND table_name = 'documents'"
     )
     actual = {row[0] for row in cur.fetchall()}
-    assert actual == REQUIRED_DOCUMENTS_COLUMNS, f"Column mismatch: {actual ^ REQUIRED_DOCUMENTS_COLUMNS}"
+    assert actual == REQUIRED_DOCUMENTS_COLUMNS, (
+        f"Column mismatch: {actual ^ REQUIRED_DOCUMENTS_COLUMNS}"
+    )
 
 
 def test_chunks_table_columns_match_icd(db_conn):
@@ -92,7 +122,9 @@ def test_chunks_table_columns_match_icd(db_conn):
         "WHERE table_schema = 'metadata' AND table_name = 'chunks'"
     )
     actual = {row[0] for row in cur.fetchall()}
-    assert actual == REQUIRED_CHUNKS_COLUMNS, f"Column mismatch: {actual ^ REQUIRED_CHUNKS_COLUMNS}"
+    assert actual == REQUIRED_CHUNKS_COLUMNS, (
+        f"Column mismatch: {actual ^ REQUIRED_CHUNKS_COLUMNS}"
+    )
 
 
 def test_embeddings_table_columns_match_icd(db_conn):
@@ -107,7 +139,9 @@ def test_embeddings_table_columns_match_icd(db_conn):
         "WHERE table_schema = 'metadata' AND table_name = 'embeddings'"
     )
     actual = {row[0] for row in cur.fetchall()}
-    assert actual == REQUIRED_EMBEDDINGS_COLUMNS, f"Column mismatch: {actual ^ REQUIRED_EMBEDDINGS_COLUMNS}"
+    assert actual == REQUIRED_EMBEDDINGS_COLUMNS, (
+        f"Column mismatch: {actual ^ REQUIRED_EMBEDDINGS_COLUMNS}"
+    )
 
 
 def test_chunks_foreign_key_to_documents(db_conn):
@@ -144,6 +178,7 @@ def test_chunk_id_unique_in_embeddings(db_conn):
 # Slice 2: Seed data insertion
 # ============================================================
 
+
 def test_seed_documents_inserted(db_conn):
     """After seeding, metadata.documents contains exactly 2 seed documents."""
     from scripts.seed_data import create_schema, insert_documents
@@ -175,7 +210,9 @@ def test_seed_documents_have_required_fields(db_conn):
         assert title, f"{doc_id}: title is empty"
         assert doc_type, f"{doc_id}: doc_type is empty"
         assert source_org, f"{doc_id}: source_org is empty"
-        assert file_format == "pdf", f"{doc_id}: file_format should be pdf, got {file_format}"
+        assert file_format == "pdf", (
+            f"{doc_id}: file_format should be pdf, got {file_format}"
+        )
 
 
 def test_seed_chunks_inserted(db_conn):
@@ -231,6 +268,7 @@ def test_chunk_text_is_meaningful(db_conn):
 # Slice 3: Ollama embedding generation
 # ============================================================
 
+
 @pytest.fixture(scope="module")
 def ollama_url():
     return "http://localhost:11435"
@@ -240,6 +278,7 @@ def ollama_url():
 def seed_chunk_texts():
     """All 15 chunk texts for embedding."""
     from scripts.seed_data import SEED_CHUNKS
+
     return [c["chunk_text"] for c in SEED_CHUNKS]
 
 
@@ -304,7 +343,9 @@ def test_similar_queries_yield_similar_vectors(ollama_url):
     sim_ab = cosine(va, vb)
     sim_ac = cosine(va, vc)
     assert sim_ab > 0.85, f"Similar texts should have high similarity, got {sim_ab:.3f}"
-    assert sim_ac < sim_ab, f"Unrelated text should have lower similarity ({sim_ac:.3f} > {sim_ab:.3f})"
+    assert sim_ac < sim_ab, (
+        f"Unrelated text should have lower similarity ({sim_ac:.3f} > {sim_ab:.3f})"
+    )
 
 
 # ============================================================
@@ -341,7 +382,9 @@ def test_milvus_collection_created(milvus_client):
 
     create_milvus_collection(milvus_client, TEST_COLLECTION)
 
-    assert milvus_client.has_collection(TEST_COLLECTION), "seed_chunks collection was not created"
+    assert milvus_client.has_collection(TEST_COLLECTION), (
+        "seed_chunks collection was not created"
+    )
 
 
 def test_milvus_collection_schema_matches_icd(milvus_client):
@@ -353,7 +396,9 @@ def test_milvus_collection_schema_matches_icd(milvus_client):
     info = milvus_client.describe_collection(TEST_COLLECTION)
 
     field_names = {f["name"] for f in info["fields"]}
-    assert field_names == {"id", "chunk_id", "doc_id", "vector"}, f"Unexpected fields: {field_names}"
+    assert field_names == {"id", "chunk_id", "doc_id", "vector"}, (
+        f"Unexpected fields: {field_names}"
+    )
 
     vector_field = next(f for f in info["fields"] if f["name"] == "vector")
     assert vector_field["params"]["dim"] == 1024
@@ -377,17 +422,24 @@ def test_vectors_inserted_into_milvus(milvus_client):
 
     # Generate embeddings first (via Ollama)
     from scripts.seed_data import generate_embeddings
+
     vectors = generate_embeddings(SEED_CHUNKS)
 
-    result = insert_embeddings_to_milvus(milvus_client, SEED_CHUNKS, vectors, TEST_COLLECTION)
-    assert result["insert_count"] == 15, f"Expected 15 inserts, got {result['insert_count']}"
+    result = insert_embeddings_to_milvus(
+        milvus_client, SEED_CHUNKS, vectors, TEST_COLLECTION
+    )
+    assert result["insert_count"] == 15, (
+        f"Expected 15 inserts, got {result['insert_count']}"
+    )
     assert len(result["ids"]) == 15, f"Expected 15 IDs, got {len(result['ids'])}"
     # All IDs should be integers
     assert all(isinstance(id_, int) for id_ in result["ids"])
 
     # Verify IVF_FLAT index was built after insertion (ICD-01 §6.2)
     idx = milvus_client.describe_index(TEST_COLLECTION, "vector")
-    assert idx["index_type"] == "IVF_FLAT", f"Expected IVF_FLAT, got {idx['index_type']}"
+    assert idx["index_type"] == "IVF_FLAT", (
+        f"Expected IVF_FLAT, got {idx['index_type']}"
+    )
     assert idx["metric_type"] == "COSINE", f"Expected COSINE, got {idx['metric_type']}"
 
 
@@ -428,16 +480,21 @@ def test_milvus_search_returns_similar_chunks(milvus_client):
     hits = results[0]
     assert len(hits) >= 1, "Should return at least 1 similar chunk"
     # Top hit should have distance > 0.5 for COSINE (1.0 = identical)
-    assert hits[0]["distance"] > 0.5, f"Top hit similarity too low: {hits[0]['distance']}"
+    assert hits[0]["distance"] > 0.5, (
+        f"Top hit similarity too low: {hits[0]['distance']}"
+    )
     # Top hit must have chunk_id and doc_id in entity (ICD-01 §6.3)
     entity = hits[0].get("entity", {})
-    assert entity.get("chunk_id", "").startswith("seed-chunk-"), f"Missing chunk_id: {entity}"
+    assert entity.get("chunk_id", "").startswith("seed-chunk-"), (
+        f"Missing chunk_id: {entity}"
+    )
     assert entity.get("doc_id", "").startswith("seed-doc-"), f"Missing doc_id: {entity}"
 
 
 # ============================================================
 # Slice 5: Embedding metadata write-back to PostgreSQL
 # ============================================================
+
 
 def test_embeddings_metadata_inserted(db_conn, milvus_client):
     """insert_embeddings_metadata writes 15 records to metadata.embeddings."""
@@ -458,11 +515,15 @@ def test_embeddings_metadata_inserted(db_conn, milvus_client):
     create_milvus_collection(milvus_client, TEST_COLLECTION)
 
     vectors = generate_embeddings(SEED_CHUNKS)
-    result = insert_embeddings_to_milvus(milvus_client, SEED_CHUNKS, vectors, TEST_COLLECTION)
+    result = insert_embeddings_to_milvus(
+        milvus_client, SEED_CHUNKS, vectors, TEST_COLLECTION
+    )
     insert_embeddings_metadata(db_conn, SEED_CHUNKS, result["ids"])
 
     cur = db_conn.cursor()
-    cur.execute("SELECT count(*) FROM metadata.embeddings WHERE embedding_id LIKE 'seed-%'")
+    cur.execute(
+        "SELECT count(*) FROM metadata.embeddings WHERE embedding_id LIKE 'seed-%'"
+    )
     count = cur.fetchone()[0]
     assert count == 15, f"Expected 15 embedding records, got {count}"
 
@@ -498,6 +559,7 @@ def test_embeddings_have_correct_model_and_dim(db_conn):
 # Slice 6: End-to-end retrieval verification
 # ============================================================
 
+
 def test_end_to_end_retrieval_by_crack_query(db_conn, milvus_client):
     """Query about crack repair must retrieve the crack treatment chunk as top hit."""
     from scripts.seed_data import (
@@ -519,7 +581,9 @@ def test_end_to_end_retrieval_by_crack_query(db_conn, milvus_client):
     create_milvus_collection(milvus_client, TEST_COLLECTION)
 
     vectors = generate_embeddings(SEED_CHUNKS)
-    result = insert_embeddings_to_milvus(milvus_client, SEED_CHUNKS, vectors, TEST_COLLECTION)
+    result = insert_embeddings_to_milvus(
+        milvus_client, SEED_CHUNKS, vectors, TEST_COLLECTION
+    )
     insert_embeddings_metadata(db_conn, SEED_CHUNKS, result["ids"])
 
     milvus_client.load_collection(TEST_COLLECTION)
@@ -547,7 +611,9 @@ def test_end_to_end_retrieval_by_crack_query(db_conn, milvus_client):
 
     # Top result should be about crack treatment (chunk-002 is the crack treatment chunk)
     top = results[0]
-    assert "裂缝" in top["chunk_text"], f"Top result not about cracks: {top['chunk_text'][:80]}"
+    assert "裂缝" in top["chunk_text"], (
+        f"Top result not about cracks: {top['chunk_text'][:80]}"
+    )
 
 
 def test_end_to_end_retrieval_by_seepage_query(db_conn, milvus_client):
@@ -570,7 +636,9 @@ def test_end_to_end_retrieval_by_seepage_query(db_conn, milvus_client):
     create_milvus_collection(milvus_client, TEST_COLLECTION)
 
     vectors = generate_embeddings(SEED_CHUNKS)
-    result = insert_embeddings_to_milvus(milvus_client, SEED_CHUNKS, vectors, TEST_COLLECTION)
+    result = insert_embeddings_to_milvus(
+        milvus_client, SEED_CHUNKS, vectors, TEST_COLLECTION
+    )
     insert_embeddings_metadata(db_conn, SEED_CHUNKS, result["ids"])
 
     milvus_client.load_collection(TEST_COLLECTION)
@@ -587,7 +655,7 @@ def test_end_to_end_retrieval_by_seepage_query(db_conn, milvus_client):
     assert len(results) >= 1
     # At least one result should mention seepage/grouting
     texts = " ".join(r["chunk_text"] for r in results)
-    assert "灌浆" in texts or "渗漏" in texts, f"No seepage-related content in results"
+    assert "灌浆" in texts or "渗漏" in texts, "No seepage-related content in results"
 
 
 def test_retrieval_results_are_deduplicated(db_conn, milvus_client):
@@ -610,7 +678,9 @@ def test_retrieval_results_are_deduplicated(db_conn, milvus_client):
     create_milvus_collection(milvus_client, TEST_COLLECTION)
 
     vectors = generate_embeddings(SEED_CHUNKS)
-    result = insert_embeddings_to_milvus(milvus_client, SEED_CHUNKS, vectors, TEST_COLLECTION)
+    result = insert_embeddings_to_milvus(
+        milvus_client, SEED_CHUNKS, vectors, TEST_COLLECTION
+    )
     insert_embeddings_metadata(db_conn, SEED_CHUNKS, result["ids"])
 
     milvus_client.load_collection(TEST_COLLECTION)
@@ -625,4 +695,6 @@ def test_retrieval_results_are_deduplicated(db_conn, milvus_client):
     )
 
     chunk_ids = [r["chunk_id"] for r in results]
-    assert len(chunk_ids) == len(set(chunk_ids)), f"Duplicate chunk_ids found: {chunk_ids}"
+    assert len(chunk_ids) == len(set(chunk_ids)), (
+        f"Duplicate chunk_ids found: {chunk_ids}"
+    )

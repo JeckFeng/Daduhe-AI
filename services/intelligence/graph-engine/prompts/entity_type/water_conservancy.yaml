@@ -1,0 +1,189 @@
+entity_types_guidance: |
+  - Project: 水电站工程的名称，如"铜街子水电站"、"深溪沟水电站"、"大渡河梯级电站"。通常作为缺陷和治理措施的归属主体。
+  - Region: 工程所属的地理区域或流域，如"大渡河流域"、"四川省"、"西南地区"。
+  - Structure: 水工建筑物及其结构部件，包括混凝土坝、消力池、泄水闸、闸门、压力钢管、溢洪道、电站厂房、引水隧洞、挡水墙等。
+  - DefectLocation: 缺陷发生的具体部位或位置，如"上游面"、"坝踵"、"消力池底板"、"伸缩缝"、"闸墩"、"坝肩"。
+  - DefectType: 水工建筑物缺陷的类型，如"裂缝"、"渗漏"、"碳化"、"冲刷"、"变形"、"沉降"、"滑坡"、"冻融剥蚀"、"腐蚀"、"钢筋锈蚀"、"溶蚀"、"管涌"、"流土"。
+  - DefectImpact: 缺陷对建筑物安全性和功能性造成的影响，如"结构安全性降低"、"承载能力不足"、"渗漏量增大"、"抗滑稳定性下降"。
+  - DefectAssessment: 对缺陷严重程度的评价或分级，如"较大缺陷"、"轻微渗漏"、"严重碳化"、"不安全状态"、"强度不足"。
+  - Treatment: 针对缺陷的治理措施和施工工艺，如"帷幕灌浆"、"化学灌浆"、"表面封闭法"、"粘贴碳纤维布法"、"劈裂灌浆"、"高压喷射灌浆"、"凿槽嵌补法"、"增大截面法"、"外包钢法"。
+  - Material: 检测和治理过程中使用的材料，如"环氧树脂"、"聚氨酯浆材"、"超细水泥浆液"、"碳纤维布"、"铜止水"、"橡胶止水"、"PVC止水带"、"水泥-水玻璃双液浆"。
+  - DetectionMethod: 检测和监测缺陷的方法，如"回弹法"、"钻芯法"、"超声-回弹综合法"、"酚酞试剂法"、"超声波探伤"、"有限元数值分析"。
+  - NormClause: 技术规范和标准的具体条款，如"DL/T 2628-2023 §5.2.3"、"DL/T 2700-2023 §6.1"。包含规范编号及条款内容。
+  - Parameter: 技术参数和判定阈值，如"裂缝宽度>0.3mm"、"渗漏量>1.0L/s"、"灌浆压力0.3-1.5MPa"、"混凝土强度低于设计强度等级的85%"、"芯样直径不宜小于100mm"。
+
+relation_types_guidance: |
+  Classify each relationship using one of the following semantic types. If no type fits, use `RELATED`.
+
+  - REGULATED_BY: target is a NormClause (technical standard or specification) that governs the source
+  - TREATED_BY: target is a Treatment (repair/remediation method) applied to the source defect
+  - USES_MATERIAL: target is a Material consumed or applied during the treatment or detection
+  - BELONGS_TO: target is a Project that the source entity belongs to
+  - OCCURS_IN: target is a DefectLocation or Structure where the source defect occurs
+  - DEFINED_BY: target is a Parameter (threshold or metric) that defines or constrains the source
+  - CAUSES: target is a DefectImpact or DefectAssessment that the source leads to or results in
+  - HAS_SUBTYPE: target is a subcategory or more specific classification of the source
+  - RELATED: general association when no other type fits
+
+entity_extraction_json_examples:
+  - |
+    {
+      "entities": [
+        {
+          "name": "裂缝",
+          "type": "DefectType",
+          "description": "水工建筑物混凝土结构表面的开裂缺陷，按宽度分为细微裂缝（<0.2mm）、中等裂缝（0.2-0.3mm）和较大裂缝（>0.3mm）"
+        },
+        {
+          "name": "化学灌浆",
+          "type": "Treatment",
+          "description": "针对中等裂缝的灌浆处理方法，采用低粘度环氧树脂或聚氨酯浆材进行灌注填充"
+        },
+        {
+          "name": "表面封闭法",
+          "type": "Treatment",
+          "description": "针对细微裂缝的处理方法，涂刷环氧涂料或聚合物水泥砂浆进行封闭"
+        },
+        {
+          "name": "裂缝宽度>0.3mm",
+          "type": "Parameter",
+          "description": "裂缝宽度超过0.3mm时判定为较大缺陷的阈值，应采取灌浆处理或加固处理并进行专项安全评估"
+        },
+        {
+          "name": "环氧树脂",
+          "type": "Material",
+          "description": "用于裂缝化学灌浆的低粘度灌浆材料"
+        }
+      ],
+      "relationships": [
+        {
+          "source": "裂缝",
+          "target": "化学灌浆",
+          "keywords": "处理措施,灌浆",
+          "description": "中等裂缝（0.2-0.3mm）采用化学灌浆进行处理",
+          "relation_type": "TREATED_BY"
+        },
+        {
+          "source": "裂缝",
+          "target": "表面封闭法",
+          "keywords": "处理措施,封闭",
+          "description": "细微裂缝（<0.2mm）可采用表面封闭法处理",
+          "relation_type": "TREATED_BY"
+        },
+        {
+          "source": "裂缝",
+          "target": "裂缝宽度>0.3mm",
+          "keywords": "判定阈值,分级标准",
+          "description": "裂缝宽度大于0.3mm判定为较大缺陷",
+          "relation_type": "DEFINED_BY"
+        },
+        {
+          "source": "化学灌浆",
+          "target": "环氧树脂",
+          "keywords": "使用材料,灌浆材料",
+          "description": "化学灌浆宜选用低粘度环氧树脂作为灌浆材料",
+          "relation_type": "USES_MATERIAL"
+        }
+      ]
+    }
+  - |
+    {
+      "entities": [
+        {
+          "name": "渗漏",
+          "type": "DefectType",
+          "description": "水工建筑物中水通过结构缝隙或孔隙渗出的缺陷，按渗漏量分为轻微渗漏（<0.1L/s）、中等渗漏（0.1-1.0L/s）和严重渗漏（>1.0L/s）"
+        },
+        {
+          "name": "帷幕灌浆",
+          "type": "Treatment",
+          "description": "针对坝基渗漏的优先处理技术，灌浆孔深度深入相对不透水层以下不小于5m，灌浆压力0.3-1.5MPa"
+        },
+        {
+          "name": "超细水泥浆液",
+          "type": "Material",
+          "description": "用于坝体渗漏劈裂灌浆或高压喷射灌浆的灌浆材料"
+        },
+        {
+          "name": "渗漏量>1.0L/s",
+          "type": "Parameter",
+          "description": "渗漏量超过1.0L/s或出现浑浊水流时判定为严重渗漏的阈值，应立即启动应急响应"
+        },
+        {
+          "name": "伸缩缝",
+          "type": "DefectLocation",
+          "description": "水工建筑物中的结构缝隙，止水失效时可能导致渗漏"
+        }
+      ],
+      "relationships": [
+        {
+          "source": "渗漏",
+          "target": "帷幕灌浆",
+          "keywords": "处理措施,灌浆",
+          "description": "坝基渗漏优先采用帷幕灌浆进行处理",
+          "relation_type": "TREATED_BY"
+        },
+        {
+          "source": "渗漏",
+          "target": "渗漏量>1.0L/s",
+          "keywords": "判定阈值,分级标准",
+          "description": "渗漏量大于1.0L/s判定为严重渗漏",
+          "relation_type": "DEFINED_BY"
+        },
+        {
+          "source": "帷幕灌浆",
+          "target": "超细水泥浆液",
+          "keywords": "使用材料,灌浆材料",
+          "description": "坝体渗漏灌浆可选用超细水泥浆液",
+          "relation_type": "USES_MATERIAL"
+        },
+        {
+          "source": "伸缩缝",
+          "target": "渗漏",
+          "keywords": "缺陷部位,渗漏原因",
+          "description": "伸缩缝止水失效可导致渗漏",
+          "relation_type": "OCCURS_IN"
+        }
+      ]
+    }
+  - |
+    {
+      "entities": [
+        {
+          "name": "混凝土碳化",
+          "type": "DefectType",
+          "description": "混凝土材料劣化缺陷的一种，导致混凝土碱度降低和钢筋锈蚀风险增加"
+        },
+        {
+          "name": "钻芯法",
+          "type": "DetectionMethod",
+          "description": "混凝土抗压强度检测方法，芯样直径不宜小于100mm，每组芯样数量不少于3个"
+        },
+        {
+          "name": "粘贴碳纤维布法",
+          "type": "Treatment",
+          "description": "针对混凝土强度不足区域的加固处理方法"
+        },
+        {
+          "name": "混凝土强度低于设计强度等级的85%",
+          "type": "Parameter",
+          "description": "实测混凝土强度低于设计强度等级85%时应评定为强度不足缺陷的阈值"
+        }
+      ],
+      "relationships": [
+        {
+          "source": "钻芯法",
+          "target": "混凝土强度低于设计强度等级的85%",
+          "keywords": "检测评定,强度判定",
+          "description": "钻芯法检测结果用于判定混凝土强度是否满足设计要求",
+          "relation_type": "DEFINED_BY"
+        },
+        {
+          "source": "混凝土强度低于设计强度等级的85%",
+          "target": "粘贴碳纤维布法",
+          "keywords": "加固处理,强度不足",
+          "description": "强度不足区域可采用粘贴碳纤维布法进行加固处理",
+          "relation_type": "TREATED_BY"
+        }
+      ]
+    }

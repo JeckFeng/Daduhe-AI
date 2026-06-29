@@ -1,6 +1,6 @@
 """链路追踪: X-Trace-Id 注入与透传"""
+
 import uuid
-from typing import Optional
 
 from fastapi import Request
 

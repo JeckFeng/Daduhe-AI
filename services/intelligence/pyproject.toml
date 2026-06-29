@@ -1,2 +1,2 @@
 [tool.uv.workspace]
-members = ["common", "graph-engine", "search-engine", "agent-reasoning"]
+members = ["common", "graph-engine", "search-engine", "agent-reasoning", "llm-gateway"]
