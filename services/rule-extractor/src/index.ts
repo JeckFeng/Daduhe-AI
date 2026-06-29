@@ -4,7 +4,13 @@ import { v4 as uuidv4 } from "uuid";
 import { tracingMiddleware } from "./common/tracing";
 import { log } from "./common/logging";
 import healthRouter from "./common/health";
-import { ErrorCode, errorResponse } from "./common/error-codes";
+import { errorDetail } from "./common/error-detail";
+import { env } from "./config/env";
+import { pool } from "./db/pool";
+import { runMigrations } from "./db/migrations";
+import { createRulesRouter } from "./routes/rules";
+import { RuleRepository } from "./services/rule-repository";
+import { ExtractionTaskService } from "./services/extraction-task";
 
 const app = express();
 app.use(express.json());
@@ -21,44 +27,9 @@ app.use(tracingMiddleware);
 
 app.use(healthRouter);
 
-// ============================================================
-// API: 触发规则抽取 (接收HT异步通知)
-// ============================================================
-
-app.post("/api/v1/rules/extract", (req: Request, res: Response) => {
-  const { doc_id } = req.body;
-  const traceId = (req.headers["x-trace-id"] as string) || "";
-
-  log.info(traceId, "rule extraction triggered", { doc_id });
-
-  res.status(202).json({
-    code: 0,
-    message: "accepted",
-    data: {
-      task_id: `r-task-${uuidv4().slice(0, 8)}`,
-      status: "processing",
-    },
-  });
-});
-
-// ============================================================
-// API: 查询规则库
-// ============================================================
-
-app.get("/api/v1/rules/search", (req: Request, res: Response) => {
-  const { keyword, category, doc_id, page = "1", page_size = "20" } = req.query;
-
-  // TODO: 实现规则库查询逻辑
-  res.json({
-    code: 0,
-    data: {
-      items: [],
-      total: 0,
-      page: parseInt(page as string),
-      page_size: parseInt(page_size as string),
-    },
-  });
-});
+const repository = new RuleRepository(pool);
+const taskService = new ExtractionTaskService(repository);
+app.use(createRulesRouter(repository, taskService));
 
 // ============================================================
 // Prometheus metrics 端点
@@ -73,7 +44,15 @@ app.get("/metrics", (_req: Request, res: Response) => {
 // 启动
 // ============================================================
 
-const PORT = parseInt(process.env.PORT || "3000");
-app.listen(PORT, () => {
-  log.info(`rule-extractor-${uuidv4()}`, `rule-extractor listening on port ${PORT}`);
+async function start(): Promise<void> {
+  const traceId = `rule-extractor-${uuidv4()}`;
+  await runMigrations(pool);
+  app.listen(env.port, () => {
+    log.info(traceId, `rule-extractor listening on port ${env.port}`);
+  });
+}
+
+start().catch((error) => {
+  log.error(`rule-extractor-${uuidv4()}`, "rule-extractor failed to start", errorDetail(error));
+  process.exit(1);
 });
