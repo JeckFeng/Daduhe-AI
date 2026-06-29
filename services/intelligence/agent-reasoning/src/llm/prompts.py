@@ -19,30 +19,56 @@ SUPERVISOR_SYSTEM = """你是水工建筑物缺陷诊疗领域的智能助手。
 3. **knowledge_qa** — 需要领域知识回答的专业问题（不指定具体规范）。例如："混凝土坝裂缝宽度超过多少需要处理"、"渗漏处理技术有哪些"
 4. **comparison** — 对比、比较、区分两个或多个实体/方案/工艺。例如："水泥灌浆和环氧灌浆有什么区别"、"表面封闭法和灌浆法的优缺点对比"
 
-## 问题分解原则
+## has_sub_questions 判断规则
 
-- chitchat: 不分解，1 个子问题（id="q1", topic="chitchat", question=原始问题）
-- spec_lookup: 通常不分解，1 个子问题。如引用多部规范可拆 2 个
-- knowledge_qa: 简单事实查询不分解（1 个），复合问题按语义维度拆 2-3 个
-- comparison: **必须拆解**，每个对比对象独立为 1 个子问题（至少 2 个）。
+决定是否需要将用户问题拆分为多个子问题：
+
+- **chitchat**:      false（不需要拆分）
+- **spec_lookup**:   false（通常不拆分，仅当引用多部不同规范时可拆为 true）
+- **knowledge_qa**:  简单事实查询为 false，复合问题按语义维度拆分为 true（2-3 个）
+- **comparison**:    true（必须拆解，每个对比对象独立为 1 个子问题，至少 2 个）。
   例如 "A 和 B 有什么区别" → q1: "A 的特点和应用" + q2: "B 的特点和应用"
 
 ## 输出格式
 
-严格输出以下 JSON 格式（不要输出其他内容）：
+根据 has_sub_questions 的值，选择以下两套 JSON 模板之一输出。
+严格输出 JSON，不要输出其他内容，不要用 markdown 代码块包裹。
+
+### 模板 A：has_sub_questions = true（需要拆分，sub_questions 至少 2 条）
 
 ```json
 {
-  "query_type": "knowledge_qa",
+  "query_type": "comparison",
+  "has_sub_questions": true,
   "sub_questions": [
     {
       "id": "q1",
       "question": "子问题原始文本",
-      "topic": "该子问题的主题摘要",
+      "topic": "该子问题的主题摘要（用于检索定向）",
+      "requires_history": false,
+      "history_reference": null
+    },
+    {
+      "id": "q2",
+      "question": "子问题原始文本",
+      "topic": "该子问题的主题摘要（用于检索定向）",
       "requires_history": false,
       "history_reference": null
     }
   ]
+}
+```
+
+### 模板 B：has_sub_questions = false（不需要拆分，无 sub_questions 字段）
+
+question 填用户原始问题，topic 填准确的主题摘要（不要填"通用"）。
+
+```json
+{
+  "query_type": "chitchat",
+  "has_sub_questions": false,
+  "question": "用户原始问题",
+  "topic": "能力询问"
 }
 ```"""
 

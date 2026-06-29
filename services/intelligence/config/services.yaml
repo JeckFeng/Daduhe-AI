@@ -1,0 +1,24 @@
+# 各服务内部配置 — URL / LLM 参数 / 集合名称
+# 生产环境通过各服务对应的环境变量前缀覆盖
+
+agent_reasoning:
+  search_engine_url: http://localhost:8002
+  llm_gateway_url: http://localhost:8004
+  graph_engine_url: http://localhost:8001
+  default_model: vllm-local
+
+llm_gateway:
+  deepseek_api_key: ""
+  deepseek_api_url: https://api.deepseek.com/v1
+  vllm_url: http://10.222.124.211:8000/v1
+  vllm_model: /home/gyyknowledge/modelscope/Qwen3.6-27B-GGUF/Qwen3.6-27B-Q4_K_M.gguf
+  default_model: vllm-local
+
+search_engine:
+  lsl_base_url: http://rule-extractor:3000
+  milvus_collection: seed_chunks
+
+graph_engine:
+  milvus_entity_collection: graph_entities
+  milvus_relation_collection: graph_relationships
+  prompt_profile_path: entity_type/water_conservancy.yaml

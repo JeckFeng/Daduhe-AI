@@ -1,8 +1,16 @@
-"""search-engine: 多模式检索引擎（关键词/模糊/向量/混合）"""
+"""search-engine 服务入口：多模式检索引擎 FastAPI 应用。
+
+提供三个端点：
+- POST /api/v1/search       — 核心检索（keyword/fuzzy/vector/hybrid 四种模式）
+- POST /api/v1/search/index — 文档索引入库（embedding + Milvus upsert，幂等）
+- GET  /health /ready /metrics — 健康检查与指标（由 daduhe_common 提供）
+
+四种检索模式的搜索流程均为：检索候选 → PG metadata 补全 → ChunkResult。
+"""
 
 import psycopg2
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from pymilvus import MilvusClient
 
 from daduhe_common import (
@@ -22,6 +30,7 @@ from src.backends.hybrid import search_hybrid
 SERVICE = "search-engine"
 settings = Settings()
 
+# Milvus 客户端（模块级单例，所有检索模式共享）
 milvus_client = MilvusClient(
     uri=settings.milvus_uri,
     user=settings.milvus_user,
@@ -31,6 +40,13 @@ milvus_client = MilvusClient(
 
 
 def get_pg_conn():
+    """创建新的 PostgreSQL 连接。
+
+    调用方负责关闭连接。
+
+    Returns:
+        psycopg2 connection 对象。
+    """
     return psycopg2.connect(
         host=settings.pg_host,
         port=settings.pg_port,
@@ -46,12 +62,30 @@ app.add_middleware(TraceMiddleware, service=SERVICE)
 app.include_router(create_health_router(SERVICE, {}))
 
 
+# ═══════════════════════════════════════════════════════════════
+# POST /api/v1/search — 多模式检索
+# ═══════════════════════════════════════════════════════════════
+
+
 @app.post("/api/v1/search")
 async def search(request: Request):
+    """多模式检索端点。
+
+    根据 req.mode 选择检索后端：
+        keyword → PG ILIKE 关键词匹配
+        fuzzy   → pg_trgm 模糊匹配
+        vector  → Ollama embedding + Milvus COSINE
+        hybrid  → RRF 多路融合（当前仅向量）
+
+    include_sources 中包含 "rules" 时返回 400（LSL 尚未集成）。
+
+    四种模式均返回统一的 ChunkResult 列表，包含 chunk 文本 + 溯源元数据。
+    """
     trace_id = get_or_generate_trace_id(request, SERVICE)
     body = await request.json()
     req = SearchRequest(**body)
 
+    # LSL rule-extractor 尚未集成，暂不支持 rules 数据源
     if "rules" in req.include_sources:
         return JSONResponse(
             status_code=400,
@@ -74,6 +108,7 @@ async def search(request: Request):
     conn = get_pg_conn()
     conn.autocommit = True
     try:
+        # 按 mode 分发到对应后端
         if req.mode == "keyword":
             results = search_keyword(conn, req.query, req.filters, req.top_k)
         elif req.mode == "fuzzy":
@@ -113,8 +148,25 @@ async def search(request: Request):
     ).model_dump(mode="json")
 
 
+# ═══════════════════════════════════════════════════════════════
+# POST /api/v1/search/index — 文档索引入库
+# ═══════════════════════════════════════════════════════════════
+
+
 @app.post("/api/v1/search/index")
 async def search_index(request: Request):
+    """文档索引入库端点（幂等）。
+
+    流程：
+        1. 从 PG metadata.chunks 读取 doc_id 的所有 chunk
+        2. 通过 Ollama bge-m3 逐条生成 1024 维 embedding
+        3. 在 Milvus 中创建 collection（如不存在）
+        4. 删除该 doc_id 的旧数据（幂等覆写）
+        5. insert 所有新向量
+        6. 首次入库时创建 IVF_FLAT COSINE 索引
+
+    doc-parser 完成文档处理后通过 HTTP POST callback 调用此端点。
+    """
     trace_id = get_or_generate_trace_id(request, SERVICE)
     body = await request.json()
     doc_id = body.get("doc_id", "")
@@ -123,7 +175,7 @@ async def search_index(request: Request):
 
     task_id = f"idx-task-{trace_id[-8:]}"
 
-    # 1. Read chunks from PG
+    # ── 1. 读取 chunks ────────────────────────────────────────────
     conn = get_pg_conn()
     conn.autocommit = True
     try:
@@ -147,7 +199,7 @@ async def search_index(request: Request):
     finally:
         conn.close()
 
-    # 2. Generate embeddings
+    # ── 2. 逐条生成 embedding（同步阻塞，适合小批量） ──────────────
     import httpx
 
     vectors = []
@@ -160,10 +212,9 @@ async def search_index(request: Request):
         resp.raise_for_status()
         vectors.append(resp.json()["embedding"])
 
-    # 3. Upsert into Milvus
+    # ── 3. Milvus collection 管理（首次创建） ──────────────────────
     coll = settings.milvus_collection
 
-    # Ensure collection exists
     if not milvus_client.has_collection(coll):
         from pymilvus import DataType
 
@@ -176,7 +227,7 @@ async def search_index(request: Request):
         schema.add_field(field_name="vector", datatype=DataType.FLOAT_VECTOR, dim=1024)
         milvus_client.create_collection(collection_name=coll, schema=schema)
 
-    # Delete existing data for this doc_id (idempotent upsert)
+    # ── 4. 删除旧数据 → 幂等覆写 ───────────────────────────────────
     try:
         milvus_client.load_collection(coll)
         existing = milvus_client.query(
@@ -186,16 +237,16 @@ async def search_index(request: Request):
             ids_to_delete = [e["id"] for e in existing]
             milvus_client.delete(coll, ids=ids_to_delete)
     except Exception:
-        pass  # No existing data or index not ready
+        pass  # collection 无现有数据或索引未就绪
 
-    # Insert
+    # ── 5. insert 新向量 ──────────────────────────────────────────
     data = [
         {"vector": vec, "chunk_id": chunk["chunk_id"], "doc_id": doc_id}
         for chunk, vec in zip(chunks, vectors)
     ]
     insert_result = milvus_client.insert(collection_name=coll, data=data)
 
-    # Build index if not already present
+    # ── 6. 首次创建 IVF_FLAT COSINE 索引 ──────────────────────────
     try:
         idx = milvus_client.describe_index(coll, "vector")
         has_index = idx["index_type"] != "FLAT_INDEX"
@@ -216,7 +267,7 @@ async def search_index(request: Request):
         except Exception:
             pass
 
-    # Release so next load sees fresh data
+    # release 使下次 load 时看到最新数据
     try:
         milvus_client.release_collection(coll)
     except Exception:
@@ -246,10 +297,14 @@ async def search_index(request: Request):
     )
 
 
+# ═══════════════════════════════════════════════════════════════
+# Prometheus / 启动入口
+# ═══════════════════════════════════════════════════════════════
+
+
 @app.get("/metrics")
 async def metrics():
-    from fastapi.responses import PlainTextResponse
-
+    """Prometheus 指标端点（占位：尚未实现）。"""
     return PlainTextResponse("# TODO: daduh_* metrics\n")
 
 

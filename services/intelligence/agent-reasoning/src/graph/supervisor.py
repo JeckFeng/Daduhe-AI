@@ -37,8 +37,9 @@ async def supervisor_node(
         settings: 服务配置
 
     Returns:
-        dict: {"query_type": str, "sub_questions": list[dict]}
-        LLM 失败时通过 _error 标记或在 sub_questions 中降级为单子问题
+        dict: 成功时 {"query_type": str, "sub_questions": list[dict]}
+              失败时 {"query_type": "", "sub_questions": [], "_error": str}
+              _error 包含失败原因，上游调用方应据此终止流水线
     """
     query = state["query"]
     trace_id = state.get("trace_id", "")
@@ -93,8 +94,6 @@ async def supervisor_node(
     raw = result["content"]
     try:
         parsed = _extract_json(raw)
-        query_type = parsed.get("query_type", "knowledge_qa")
-        sub_questions = parsed.get("sub_questions", [])
     except (json.JSONDecodeError, KeyError) as exc:
         log_error(
             SERVICE,
@@ -103,37 +102,68 @@ async def supervisor_node(
             error=str(exc),
             raw=raw[:200],
         )
-        # 降级：LLM 解析失败时退化为 knowledge_qa 单子问题，避免整个请求中断
         return {
-            "query_type": "knowledge_qa",
-            "sub_questions": [
-                {
-                    "id": "q1",
-                    "question": query,
-                    "topic": "通用",
-                    "requires_history": False,
-                    "history_reference": None,
-                }
-            ],
-            "_parse_error": str(exc),
+            "query_type": "",
+            "sub_questions": [],
+            "_error": f"Supervisor JSON parse failed: {exc}",
         }
 
     # ── 校验：确保 query_type 在合法枚举内 ──
     valid_types = {"chitchat", "spec_lookup", "knowledge_qa", "comparison"}
+    query_type = parsed.get("query_type", "")
     if query_type not in valid_types:
-        query_type = "knowledge_qa"
+        return {
+            "query_type": "",
+            "sub_questions": [],
+            "_error": f"Invalid query_type: {query_type}",
+        }
 
-    # 空子问题降级：直接将用户问题包装为 q1，保证后续节点有内容可检索
-    if not sub_questions:
+    has_sub_questions = parsed.get("has_sub_questions", None)
+
+    # ── 模板 A：has_sub_questions = true → 使用 sub_questions ──
+    if has_sub_questions is True:
+        sub_questions = parsed.get("sub_questions", [])
+        if not sub_questions:
+            log_error(
+                SERVICE,
+                "supervisor: has_sub_questions=true but sub_questions is empty",
+                trace_id,
+            )
+            return {
+                "query_type": "",
+                "sub_questions": [],
+                "_error": "has_sub_questions is true but sub_questions is empty",
+            }
+    # ── 模板 B：has_sub_questions = false → 用 question + topic 构造单条 ──
+    elif has_sub_questions is False:
+        question_text = parsed.get("question", query)
+        topic_text = parsed.get("topic", "")
+        if not topic_text:
+            log_error(
+                SERVICE,
+                "supervisor: has_sub_questions=false but topic is empty",
+                trace_id,
+            )
+            return {
+                "query_type": "",
+                "sub_questions": [],
+                "_error": "has_sub_questions is false but topic is empty",
+            }
         sub_questions = [
             {
                 "id": "q1",
-                "question": query,
-                "topic": "通用",
+                "question": question_text,
+                "topic": topic_text,
                 "requires_history": False,
                 "history_reference": None,
             }
         ]
+    else:
+        return {
+            "query_type": "",
+            "sub_questions": [],
+            "_error": f"has_sub_questions must be true or false, got: {has_sub_questions}",
+        }
 
     for sq in sub_questions:
         sq.setdefault("requires_history", False)

@@ -1,0 +1,10 @@
+# 工具白名单：检索时启用的数据来源类型。
+# 新增数据源只需在此列表追加对应 source_type。
+# 数据来源 → 工具映射：
+#   chunk → search_engine  (search-engine 服务)
+#   graph → graph_search   (graph-engine 服务)
+#   rule  → rule_search     (rule-extractor 服务，尚未集成)
+
+tool_source_types:
+  - graph
+  - chunk

@@ -200,10 +200,10 @@ async def _stream_chat(
                 if event_type == "answer_chunk":
                     token = event.get("data", "")
                     final_answer.append(token)
-                    yield f"event: answer_chunk\ndata: {json.dumps({'token': token})}\n\n"
+                    yield f"event: answer_chunk\ndata: {json.dumps({'token': token}, ensure_ascii=False)}\n\n"
                 elif event_type == "error":
                     err_msg = event.get("data", "unknown")
-                    yield f"event: error\ndata: {json.dumps({'error': err_msg})}\n\n"
+                    yield f"event: error\ndata: {json.dumps({'error': err_msg}, ensure_ascii=False)}\n\n"
                     return  # 流式出错立即终止
 
             elif mode == "updates":
@@ -223,7 +223,7 @@ async def _stream_chat(
                             if isinstance(node_output, dict)
                             else 0
                         )
-                        yield f"event: status\ndata: {json.dumps({'node': 'supervisor', 'query_type': query_type, 'sub_questions': sub_count})}\n\n"
+                        yield f"event: status\ndata: {json.dumps({'node': 'supervisor', 'query_type': query_type, 'sub_questions': sub_count}, ensure_ascii=False)}\n\n"
 
                     elif node_name == "call_tools":
                         # 汇总所有子问题的检索命中数
@@ -235,17 +235,17 @@ async def _stream_chat(
                         total_results = sum(
                             len(sq.get("results", [])) for sq in sub_questions
                         )
-                        yield f"event: status\ndata: {json.dumps({'node': 'retrieval', 'total_results': total_results})}\n\n"
+                        yield f"event: status\ndata: {json.dumps({'node': 'retrieval', 'total_results': total_results}, ensure_ascii=False)}\n\n"
 
         # ── 推送引用 ──
         citations = final_state.get("citations", [])
         if citations:
-            yield f"event: references\ndata: {json.dumps(citations)}\n\n"
+            yield f"event: references\ndata: {json.dumps(citations, ensure_ascii=False)}\n\n"
 
         elapsed_ms = round((time.perf_counter() - t0) * 1000)
         answer = "".join(final_answer) or final_state.get("answer", "")
 
-        yield f"event: done\ndata: {json.dumps({'conversation_id': conv_id, 'trace_id': trace_id, 'elapsed_ms': elapsed_ms})}\n\n"
+        yield f"event: done\ndata: {json.dumps({'conversation_id': conv_id, 'trace_id': trace_id, 'elapsed_ms': elapsed_ms}, ensure_ascii=False)}\n\n"
 
         # ── 存储会话 ──
         try:
@@ -262,7 +262,7 @@ async def _stream_chat(
     except Exception as exc:
         log_error(SERVICE, "stream execution failed", trace_id, error=str(exc))
         traceback.print_exc()
-        yield f"event: error\ndata: {json.dumps({'error': str(exc)})}\n\n"
+        yield f"event: error\ndata: {json.dumps({'error': str(exc)}, ensure_ascii=False)}\n\n"
 
 
 # ══════════════════════════════════════════════════════════════

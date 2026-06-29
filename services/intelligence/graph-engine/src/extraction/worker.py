@@ -12,6 +12,7 @@ import asyncio
 import httpx
 from daduhe_common import error as log_error, info
 
+from src.models import EntityExtractionResult
 from src.settings import Settings
 from src.llm.client import AgentReasoningLLMClient
 from src.prompts.loader import load_prompt_profile

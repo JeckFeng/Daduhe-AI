@@ -1,8 +1,16 @@
 """llm-gateway: LLM 调用工厂 — 统一 LLM 入口 + PG 缓存。
 
-POST /api/v1/completion — cache-wrapped LLM completion.
-Cache key = compute_args_hash(system, user, model, host) so switching
-backends (vllm vs deepseek) automatically busts the cache.
+提供三个端点：
+- POST /api/v1/completion        — 缓存包裹的非流式 LLM Completion
+- POST /api/v1/completion/stream — 流式 SSE LLM Completion（缓存命中时单 token 返回）
+- GET  /health /ready /metrics   — 健康检查与指标（由 daduhe_common 提供）
+
+缓存键 = MD5(system + user + model + host)，切换后端（vLLM vs DeepSeek）
+时自动 bust 缓存。
+
+LLM 后端路由：
+    vllm-local    → 本地 vLLM (AsyncOpenAI, base_url=vllm_url)
+    deepseek-chat → DeepSeek API (AsyncOpenAI, base_url=deepseek_api_url)
 """
 
 from contextlib import asynccontextmanager
@@ -30,10 +38,10 @@ _settings = Settings()
 _llm = LLMClient(_settings)
 _cache = LLMCache(_settings)
 
-# ── Table DDL ────────────────────────────────────────────────────
+# ── 表 DDL ────────────────────────────────────────────────────────
 
-_CREATE_SCHEMA = "CREATE SCHEMA IF NOT EXISTS llm_gateway"
-_CREATE_TABLE = """
+_CREATE_SCHEMA: str = "CREATE SCHEMA IF NOT EXISTS llm_gateway"
+_CREATE_TABLE: str = """
 CREATE TABLE IF NOT EXISTS llm_gateway.llm_cache (
     cache_key   TEXT PRIMARY KEY,
     model       TEXT NOT NULL,
@@ -46,7 +54,10 @@ CREATE TABLE IF NOT EXISTS llm_gateway.llm_cache (
 
 
 def _init_db() -> None:
-    """Create PG schema and cache table if they don't exist."""
+    """创建 PG schema 和缓存表（幂等）。
+
+    失败时不阻塞服务启动，仅记 WARN 日志（缓存降级为禁用）。
+    """
     try:
         conn = psycopg2.connect(
             host=_settings.pg_host,
@@ -71,6 +82,7 @@ def _init_db() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """应用生命周期：启动时初始化 PG 缓存表。"""
     _init_db()
     yield
 
@@ -84,29 +96,34 @@ _pg_ok = lambda: "ok"  # noqa: E731
 app.include_router(create_health_router(SERVICE, {"postgres": _pg_ok}))
 
 
-# ── Models ───────────────────────────────────────────────────────
+# ── 请求/响应模型 ──────────────────────────────────────────────────
 
 
 class Message(BaseModel):
-    role: str
-    content: str
+    """OpenAI 兼容消息格式。"""
+    role: str       # "system" / "user" / "assistant"
+    content: str    # 消息文本
 
 
 class CompletionRequest(BaseModel):
+    """LLM Completion 请求体。"""
     model: str = "vllm-local"
     messages: list[Message]
     temperature: float = 0.1
     max_tokens: int = 2000
-    caller: str = ""
+    caller: str = ""          # 调用方标识（用于日志/监控）
     priority: str = Field(default="batch", pattern=r"^(realtime|batch)$")
+    """请求优先级：realtime（30s 超时）/ batch（120s 超时）。"""
 
 
 class Usage(BaseModel):
+    """Token 用量统计。"""
     prompt_tokens: int = 0
     completion_tokens: int = 0
 
 
 class CompletionData(BaseModel):
+    """Completion 响应数据载荷。"""
     id: str
     content: str
     model: str
@@ -115,15 +132,26 @@ class CompletionData(BaseModel):
 
 
 class CompletionResponse(BaseModel):
+    """Completion 响应体（最外层封装）。"""
     code: int = 0
     data: CompletionData
 
 
-# ── POST /api/v1/completion ─────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════
+# POST /api/v1/completion — 非流式 LLM Completion
+# ═══════════════════════════════════════════════════════════════
 
 
 @app.post("/api/v1/completion")
 async def completion(request: Request):
+    """缓存包裹的非流式 LLM Completion。
+
+    流程：
+        1. 解析 system/user prompt
+        2. 计算缓存键（包含 host，区分不同后端）
+        3. 缓存命中 → 直接返回
+        4. 缓存未命中 → 调用 LLM → 写入缓存 → 返回
+    """
     trace_id = get_or_generate_trace_id(request, SERVICE)
     body = await request.json()
 
@@ -137,7 +165,7 @@ async def completion(request: Request):
 
     messages = [m.model_dump() for m in req.messages]
 
-    # Extract system/user prompts for cache key (LightRAG-style identity)
+    # 提取 system/user prompt 用于缓存键计算
     system_prompt = ""
     user_prompt = ""
     for m in messages:
@@ -146,6 +174,8 @@ async def completion(request: Request):
         elif m["role"] == "user":
             user_prompt = m["content"]
 
+    # 缓存键 = MD5(system + user + model + host)
+    # host 不同（vllm vs deepseek）会 bust 缓存
     cache_key = _cache.cache_key(
         req.model,
         system_prompt,
@@ -153,7 +183,7 @@ async def completion(request: Request):
         host=_llm.get_host(req.model),
     )
 
-    # ── Cache hit ──
+    # ── 缓存命中 ──
     cached = _cache.get(cache_key)
     if cached is not None:
         info(
@@ -177,7 +207,7 @@ async def completion(request: Request):
             ),
         ).model_dump()
 
-    # ── Cache miss → call LLM ──
+    # ── 缓存未命中 → 调用 LLM ──
     info(
         SERVICE,
         "cache miss, calling LLM",
@@ -201,7 +231,7 @@ async def completion(request: Request):
             content={"code": 4001, "message": str(exc), "trace_id": trace_id},
         )
 
-    # ── Cache result ──
+    # ── 写入缓存（失败不影响响应） ──
     try:
         _cache.set(cache_key, req.model, system_prompt, user_prompt, result)
     except Exception as exc:
@@ -222,17 +252,21 @@ async def completion(request: Request):
     ).model_dump()
 
 
-# ── POST /api/v1/completion/stream ────────────────────────────────
+# ═══════════════════════════════════════════════════════════════
+# POST /api/v1/completion/stream — 流式 SSE Completion
+# ═══════════════════════════════════════════════════════════════
 
 
 @app.post("/api/v1/completion/stream")
 async def completion_stream(request: Request):
-    """Streaming LLM completion — returns SSE (text/event-stream).
+    """流式 LLM Completion（SSE，text/event-stream）。
 
-    Event types:
-      - ``token`` — a content delta
-      - ``done``  — completion signal with usage + latency
-      - ``error`` — error message
+    SSE 事件类型：
+        - data: {"token": "<delta>"}   — 内容增量
+        - data: {"done": True, ...}    — 完成信号 + usage + latency
+        - event: error / data: {"error": "..."}  — 错误
+
+    缓存命中时将完整内容作为单个 token 返回。
     """
     import json
     import time as time_mod
@@ -250,7 +284,7 @@ async def completion_stream(request: Request):
 
     messages = [m.model_dump() for m in req.messages]
 
-    # Extract system/user for cache key
+    # 提取 system/user 用于缓存键
     system_prompt = ""
     user_prompt = ""
     for m in messages:
@@ -267,7 +301,8 @@ async def completion_stream(request: Request):
     )
 
     async def _event_stream():
-        # ── Cache hit: yield cached content as single token ──
+        """SSE 事件生成器：缓存命中 → 单 token / 未命中 → 逐 token 流。"""
+        # ── 缓存命中：将缓存内容作为单 token yield ──
         cached = _cache.get(cache_key)
         if cached is not None:
             info(SERVICE, "stream cache hit", trace_id, model=req.model)
@@ -275,7 +310,7 @@ async def completion_stream(request: Request):
             yield f"data: {json.dumps({'done': True, 'usage': {'prompt_tokens': cached.get('prompt_tokens', 0), 'completion_tokens': cached.get('completion_tokens', 0)}, 'latency_ms': cached.get('latency_ms', 0)})}\n\n"
             return
 
-        # ── Cache miss → stream from LLM ──
+        # ── 缓存未命中 → 流式调用 LLM ──
         info(SERVICE, "stream cache miss", trace_id, model=req.model)
         t0 = time_mod.perf_counter()
         full_content: list[str] = []
@@ -297,11 +332,12 @@ async def completion_stream(request: Request):
 
         latency_ms = round((time_mod.perf_counter() - t0) * 1000)
         content = "".join(full_content)
-        prompt_tokens = len("".join(m["content"] for m in messages))  # rough estimate
+        # prompt_tokens 粗略估算 = 所有消息内容的总长度
+        prompt_tokens = len("".join(m["content"] for m in messages))
 
         yield f"data: {json.dumps({'done': True, 'usage': {'prompt_tokens': prompt_tokens, 'completion_tokens': len(full_content)}, 'latency_ms': latency_ms})}\n\n"
 
-        # ── Cache the result ──
+        # ── 写入缓存（失败不影响流式响应） ──
         try:
             _cache.set(
                 cache_key,
@@ -325,13 +361,19 @@ async def completion_stream(request: Request):
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
+            "X-Accel-Buffering": "no",  # 禁用 Nginx 缓冲，确保 SSE 实时推送
         },
     )
 
 
+# ═══════════════════════════════════════════════════════════════
+# Prometheus / 启动入口
+# ═══════════════════════════════════════════════════════════════
+
+
 @app.get("/metrics")
 async def metrics():
+    """Prometheus 指标端点（占位：尚未实现）。"""
     return PlainTextResponse("# TODO: daduh_* metrics\n")
 
 

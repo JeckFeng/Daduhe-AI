@@ -1,14 +1,38 @@
+"""模糊搜索后端：pg_trgm 相似度匹配。
+
+使用 PostgreSQL pg_trgm 扩展的 similarity() 函数计算中文文本相似度。
+中文 trigram 特征与拉丁语系不同，阈值 _SIM_THRESHOLD = 0.005 针对 2-4 字查询调优。
+"""
+
+from psycopg2.extensions import connection as PgConnection
+
 from src.models import ChunkResult, ChunkMetadata, SearchFilters
 
-# pg_trgm similarity threshold for Chinese text. Chinese trigrams differ from
-# Latin-based languages; 0.01 is pragmatic for 2-4 character queries.
-_SIM_THRESHOLD = 0.005
+# pg_trgm 中文相似度阈值。中文 trigram 与拉丁语系不同，
+# 0.005 是针对 2-4 字短查询的实际调优值。
+_SIM_THRESHOLD: float = 0.005
 
 
 def search_fuzzy(
-    conn, query: str, filters: SearchFilters, top_k: int
+    conn: PgConnection,
+    query: str,
+    filters: SearchFilters,
+    top_k: int,
 ) -> list[ChunkResult]:
-    """pg_trgm similarity-based fuzzy search with PG JOIN for metadata."""
+    """pg_trgm 相似度模糊搜索，通过 PG JOIN 组装溯源元数据。
+
+    依赖 PostgreSQL pg_trgm 扩展。similarity() 函数返回 0-1 之间的相似度分数。
+    通过 JOIN metadata.documents 获取文档级元数据。
+
+    Args:
+        conn: PostgreSQL 连接。
+        query: 搜索关键词（支持拼写错误容忍）。
+        filters: 搜索过滤条件（doc_type, doc_ids, date 范围）。
+        top_k: 返回结果数量上限。
+
+    Returns:
+        list[ChunkResult]: 按 similarity 降序排列的 chunk 结果列表。
+    """
     where_clauses = ["similarity(c.chunk_text, %(query)s) > %(threshold)s"]
     params = {"query": query, "threshold": _SIM_THRESHOLD, "limit": top_k}
 
@@ -44,7 +68,7 @@ def search_fuzzy(
     rows = cur.fetchall()
     cur.close()
 
-    results = []
+    results: list[ChunkResult] = []
     for row in rows:
         (
             chunk_id,

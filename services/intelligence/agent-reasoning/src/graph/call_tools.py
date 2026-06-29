@@ -37,8 +37,9 @@ async def call_tools_node(
     trace_id = state.get("trace_id", "")
     sub_questions_raw = state.get("sub_questions", [])
 
-    # 当前硬编码所有 source_type，后续由 Supervisor 按需选择
-    source_types = ["chunk", "graph"]
+    # 从配置白名单读取启用的 source_type
+    # 数据来源 → 工具映射：chunk → search_engine,  graph → graph_search
+    source_types = _settings.tool_source_types
     tool_names = registry.resolve(source_types)
 
     if not tool_names:
